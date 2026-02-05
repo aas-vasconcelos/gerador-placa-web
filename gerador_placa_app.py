@@ -4,30 +4,43 @@ import cv2
 import numpy as np
 import io
 
-# --- CONFIGURAÇÕES DA PÁGINA (Compacta) ---
-st.set_page_config(page_title="SIV-PC Web", layout="wide", page_icon="👮")
+# --- CONFIGURAÇÕES DA PÁGINA ---
+st.set_page_config(page_title="SIV-PC Web", layout="centered", page_icon="👮")
 
-# --- CSS PARA ALINHAMENTO PERFEITO ---
+# --- CSS (Design Compacto e Centralizado) ---
 st.markdown("""
     <style>
-    /* Remove espaços em branco excessivos do topo */
-    .block-container { padding-top: 1rem; padding-bottom: 1rem; }
+    /* Reduz margens do topo */
+    .block-container { padding-top: 1rem; padding-bottom: 2rem; }
     
-    /* Estilo dos Botões do Joystick */
-    div.stButton > button {
-        width: 100%;
-        padding: 0px 5px;
-        font-size: 20px;
-        line-height: 1.5;
+    /* Botões de Direção (Setas) */
+    .stButton button {
+        font-weight: bold;
+        font-size: 24px; /* Setas maiores */
+        padding: 0px;
+        line-height: 1;
+        height: 50px;
         border-radius: 8px;
-        height: 50px; /* Altura fixa para alinhar */
     }
     
-    /* Centraliza colunas */
-    div[data-testid="column"] { text-align: center; }
+    /* Botões de Texto (Foco/Download) - Fonte menor normal */
+    div[data-testid="stVerticalBlock"] > div > div > div > div > .stButton button p {
+        font-size: 16px;
+    }
+
+    /* Centralizar tudo nas colunas */
+    div[data-testid="column"] {
+        display: flex;
+        align-items: center;
+        justify_content: center;
+        text-align: center;
+    }
     
-    /* Borda no Preview */
-    img { border: 1px solid #ccc; border-radius: 5px; }
+    /* Borda suave no Preview */
+    img {
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -72,12 +85,10 @@ def reset_state():
     st.session_state.off_x = 0
     st.session_state.off_y = 0
 
-# --- LÓGICA (Escala Reduzida para Performance) ---
+# --- LÓGICA RÁPIDA (PROXY) ---
 def get_preview_scale(img_pil):
-    # Reduz para max 350px para ser MUITO rápido e pequeno na tela
-    w, h = img_pil.size
-    fator = 350 / max(w, h)
-    return fator if fator < 1 else 1.0
+    # Preview fixo em 300px para caber no meio dos botões sem rolar tela
+    return 300 / max(img_pil.size)
 
 def desenhar_texto(img, texto, chave, escala=1.0):
     if not texto: return img
@@ -154,7 +165,6 @@ def auto_foco(img_cv, modo):
     st.session_state.off_x = (w/2 - cx) * st.session_state.zoom
     st.session_state.off_y = (h/2 - cy) * st.session_state.zoom
 
-# --- DOWNLOADER LAZY (HD) ---
 def gerar_final_hd(img_orig, txts):
     crop_hd = gerar_recorte(img_orig, MOLDURA_FULL.size, POSICAO_FOTO_FULL, TAM_FINAL_FULL)
     base_hd = Image.new("RGBA", MOLDURA_FULL.size, "WHITE")
@@ -164,16 +174,16 @@ def gerar_final_hd(img_orig, txts):
         base_hd = desenhar_texto(base_hd, v.upper(), k, escala=1.0)
     buf = io.BytesIO(); base_hd.save(buf, format="PNG"); return buf.getvalue()
 
-# --- INTERFACE PRINCIPAL (3 COLUNAS) ---
+# --- INTERFACE (Layout Condensado V17) ---
 st.title("SIV-PC Web")
 
-# Linha 1: Upload (Ocupa largura total para ser fácil clicar)
-uploaded = st.file_uploader("1. Carregar Foto", type=['jpg','png','jpeg'])
+# 1. Upload e Instrução
+uploaded = st.file_uploader("Carregar Fotografia do Indiciado", type=['jpg','png','jpeg'])
 
 if uploaded:
     img_orig = Image.open(uploaded).convert('RGB')
     
-    # Criar Proxy Leve (350px max)
+    # Prepara Proxy
     f_escala = get_preview_scale(img_orig)
     w_p, h_p = int(img_orig.width * f_escala), int(img_orig.height * f_escala)
     img_proxy = img_orig.resize((w_p, h_p), Image.NEAREST)
@@ -181,61 +191,41 @@ if uploaded:
     pos_p = (int(POSICAO_FOTO_FULL[0]*f_escala), int(POSICAO_FOTO_FULL[1]*f_escala))
     tam_p = (int(TAM_FINAL_FULL[0]*f_escala), int(TAM_FINAL_FULL[1]*f_escala))
 
-    # --- ÁREA DE TRABALHO (3 COLUNAS) ---
-    c_inputs, c_ctrl, c_view = st.columns([1.5, 1.2, 1.2], gap="medium")
+    # 2. Dados Condensados
+    with st.container():
+        # Linha 1: Nome
+        nome = st.text_input("Nome", placeholder="Nome Completo", label_visibility="collapsed")
+        # Linha 2: 4 campos espremidos
+        c1, c2, c3, c4 = st.columns(4)
+        rg = c1.text_input("RG", placeholder="RG/CPF", label_visibility="collapsed")
+        sit = c2.text_input("Situação", value="INDICIADO", label_visibility="collapsed")
+        nat = c3.text_input("Natureza", placeholder="Artigo/Natureza", label_visibility="collapsed")
+        out = c4.text_input("Outros", placeholder="Data/BO", label_visibility="collapsed")
 
-    # COLUNA 1: DADOS
-    with c_inputs:
-        st.subheader("📝 Dados")
-        nome = st.text_input("Nome")
-        c1a, c1b = st.columns(2)
-        rg = c1a.text_input("RG/CPF")
-        sit = c1b.text_input("Situação", "INDICIADO")
-        c2a, c2b = st.columns(2)
-        nat = c2a.text_input("Natureza")
-        out = c2b.text_input("Outros")
+    st.write("---")
 
-    # COLUNA 2: CONTROLES
-    with c_ctrl:
-        st.subheader("🎛️ Ajustes")
-        
-        # Botões Auto
-        b1, b2 = st.columns(2)
-        if b1.button("ROSTO", use_container_width=True): auto_foco(np.array(img_proxy), "face")
-        if b2.button("CORPO", use_container_width=True): auto_foco(np.array(img_proxy), "corpo")
+    # 3. PAINEL DE CONTROLE TIPO "CRUZ" (JOYSTICK)
+    
+    # Passo de movimento
+    step = 50 
 
-        st.markdown("---")
-        
-        # Joystick Compacto (Layout em Grade)
-        step = 30
-        
-        # Linha Cima
-        j1, j2, j3 = st.columns([1,1,1])
-        with j2: 
-            if st.button("⬆️", use_container_width=True): st.session_state.off_y += step
-            
-        # Linha Meio (Esq - Zoom - Dir)
-        j4, j5, j6 = st.columns([1,1,1])
-        with j4: 
-            if st.button("⬅️", use_container_width=True): st.session_state.off_x += step
-        with j5:
-            st.write(f"Zoom: {st.session_state.zoom:.1f}x") # Label central
-        with j6: 
-            if st.button("➡️", use_container_width=True): st.session_state.off_x -= step
-            
-        # Linha Baixo
-        j7, j8, j9 = st.columns([1,1,1])
-        with j8: 
-            if st.button("⬇️", use_container_width=True): st.session_state.off_y -= step
-            
-        # Zoom Slider (Rápido)
-        st.session_state.zoom = st.slider("Nível de Zoom", 0.1, 5.0, st.session_state.zoom, 0.1)
+    # --- LINHA CIMA (Botão UP) ---
+    c_up1, c_up2, c_up3 = st.columns([1, 4, 1]) # Coluna central mais larga para alinhar com imagem
+    with c_up2:
+        if st.button("⬆️", use_container_width=True): st.session_state.off_y += step
 
-    # COLUNA 3: PREVIEW (Miniatura)
-    with c_view:
-        st.subheader("👁️ Preview")
-        
-        # Processamento Visual Leve
+    # --- LINHA MEIO (ESQ - PREVIEW - DIR) ---
+    c_mid_L, c_mid_C, c_mid_R = st.columns([1, 4, 1])
+    
+    with c_mid_L:
+        # Espaçador para descer o botão para o meio da altura da foto
+        st.write("") 
+        st.write("")
+        st.write("")
+        if st.button("⬅️", use_container_width=True): st.session_state.off_x += step
+
+    with c_mid_C:
+        # PREVIEW CENTRALIZADO
         crop_p = gerar_recorte(img_proxy, moldura_p.size, pos_p, tam_p)
         base_p = Image.new("RGBA", moldura_p.size, "WHITE")
         base_p.paste(crop_p, pos_p)
@@ -245,18 +235,37 @@ if uploaded:
         for k, v in txts.items():
             base_p = desenhar_texto(base_p, v.upper(), k, escala=f_escala)
             
-        st.image(base_p, caption="Visualização Reduzida", width=280) # TAMANHO FIXO PEQUENO
-        
-        # Download HD
-        st.download_button(
-            label="💾 BAIXAR ORIGINAL",
-            data=gerar_final_hd(img_orig, txts),
-            file_name=f"Placa_{nome.split()[0] if nome else 'PC'}.png",
-            mime="image/png",
-            type="primary",
-            use_container_width=True
-        )
+        st.image(base_p, use_container_width=True)
+
+    with c_mid_R:
+        st.write("")
+        st.write("")
+        st.write("")
+        if st.button("➡️", use_container_width=True): st.session_state.off_x -= step
+
+    # --- LINHA BAIXO (Botão DOWN) ---
+    c_dw1, c_dw2, c_dw3 = st.columns([1, 4, 1])
+    with c_dw2:
+        if st.button("⬇️", use_container_width=True): st.session_state.off_y -= step
+
+    # --- ZOOM (Abaixo do botão Down) ---
+    st.session_state.zoom = st.slider("Zoom", 0.1, 5.0, st.session_state.zoom, 0.1, label_visibility="collapsed")
+
+    # --- BOTÕES DE FOCO ---
+    cf1, cf2 = st.columns(2)
+    if cf1.button("Focar Rosto", use_container_width=True): auto_foco(np.array(img_proxy), "face")
+    if cf2.button("Focar Corpo", use_container_width=True): auto_foco(np.array(img_proxy), "corpo")
+
+    # --- DOWNLOAD (Rodapé) ---
+    st.write("---")
+    st.download_button(
+        label="💾 BAIXAR FOTO FINAL",
+        data=gerar_final_hd(img_orig, txts),
+        file_name=f"Placa_{nome.split()[0] if nome else 'PC'}.png",
+        mime="image/png",
+        type="primary",
+        use_container_width=True
+    )
 
 else:
     reset_state()
-    st.info("Aguardando upload...")
