@@ -7,40 +7,46 @@ import io
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(page_title="SIV-PC Web", layout="centered", page_icon="👮")
 
-# --- CSS (Mobile Friendly) ---
+# --- CSS (Correção Mobile e Layout) ---
 st.markdown("""
     <style>
-    /* Ajuste de margens */
-    .block-container { padding-top: 1rem; padding-bottom: 3rem; }
+    .block-container { padding-top: 0.5rem; padding-bottom: 3rem; }
     
-    /* Botões de Comando (Barra Superior) */
-    div.stButton > button {
-        width: 100%;
-        height: 55px; /* Botões mais altos para toque no celular */
-        font-size: 28px; /* Ícones grandes */
-        font-weight: bold;
-        border-radius: 10px;
-        margin-bottom: 5px;
-        line-height: 1;
-    }
-    
-    /* Texto dos botões de zoom/foco menor */
-    div[data-testid="column"] > div > div > div > div > .stButton > button p {
-        font-size: 16px;
-    }
-    
-    /* Preview com borda */
-    img {
+    /* PREVIEW: Tamanho bom e centralizado */
+    .stImage > img {
         border: 2px solid #ccc;
         border-radius: 8px;
-        display: block;
+        max-width: 100%;
         margin-left: auto;
         margin-right: auto;
+        display: block;
+    }
+
+    /* BOTÕES: Forçar linha horizontal no Mobile */
+    /* Isso impede que o Streamlit empilhe os botões de seta no celular */
+    div[data-testid="column"] {
+        display: flex;
+        flex-direction: row !important; /* Força linha */
+        flex-wrap: nowrap !important;   /* Impede quebra */
+        justify-content: center;
+        align-items: center;
+        gap: 5px;
+    }
+
+    /* Estilo dos Botões */
+    div.stButton > button {
+        width: 100%;
+        height: 50px;
+        font-size: 24px;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 0px;
+        margin: 0px;
     }
     
-    /* Centralizar colunas */
-    div[data-testid="column"] {
-        text-align: center;
+    /* Texto menor para botões de texto */
+    div[data-testid="column"] > div > div > div > div > .stButton > button p {
+        font-size: 14px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -54,7 +60,6 @@ def load_resources():
         st.error("ERRO: 'moldura.png' ausente.")
         return None, None
     try:
-        # Tenta carregar cascade
         path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
         face = cv2.CascadeClassifier(path)
         if face.empty(): face = cv2.CascadeClassifier('haarcascade_frontalface_default.xml')
@@ -77,43 +82,35 @@ CONFIG_TEXTOS = {
     "outras":   {"box": (82, 2017, 1500, 50), "cor": (0,0,0), "rotate": 0, "bold": False}
 }
 
-# --- ESTADO ---
+# --- ESTADO E CALLBACKS ---
 if 'zoom' not in st.session_state: st.session_state.zoom = 1.0
 if 'off_x' not in st.session_state: st.session_state.off_x = 0
 if 'off_y' not in st.session_state: st.session_state.off_y = 0
 
-# --- CALLBACKS (Lógica de Movimento Imediato) ---
-STEP = 40
+# Pixels de movimento na imagem ORIGINAL
+STEP = 40 
 
 def cb_up(): st.session_state.off_y -= STEP
 def cb_down(): st.session_state.off_y += STEP
 def cb_left(): st.session_state.off_x -= STEP
 def cb_right(): st.session_state.off_x += STEP
-
 def cb_zoom_in(): st.session_state.zoom += 0.1
 def cb_zoom_out(): 
     if st.session_state.zoom > 0.2: st.session_state.zoom -= 0.1
 
 def cb_auto_foco(pil_img, modo):
-    """Lógica blindada contra falhas"""
-    if FACE_CASCADE is None: 
-        st.toast("⚠️ Erro: IA não carregada no servidor.")
-        return
+    """Calcula foco na imagem original e atualiza coordenadas"""
+    if FACE_CASCADE is None: return
 
     try:
-        # Converter para formato do OpenCV
         cv_img = cv2.cvtColor(np.array(pil_img), cv2.COLOR_RGB2BGR)
         gray = cv2.cvtColor(cv_img, cv2.COLOR_BGR2GRAY)
-        
-        # Tenta detectar
         faces = FACE_CASCADE.detectMultiScale(gray, 1.1, 5)
         
-        # Se NÃO achar rosto, para aqui e avisa. NÃO muda a foto.
         if len(faces) == 0:
-            st.toast("⚠️ Nenhum rosto detectado! Ajuste manualmente.")
+            st.toast("⚠️ Rosto não detectado.")
             return
 
-        # Se achou, prossegue com o cálculo
         h_img, w_img = cv_img.shape[:2]
         (x, y, w, h) = max(faces, key=lambda f: f[2]*f[3])
         
@@ -127,26 +124,18 @@ def cb_auto_foco(pil_img, modo):
             lado_ideal = h_util * 1.2
             cx, cy = x + w // 2, y + h_util // 2
             
-        # Proteção matemática para o Zoom
-        novo_zoom = 1500 / lado_ideal
-        # Ajuste de escala relativo à imagem original
-        novo_zoom_real = w_img / lado_ideal
-        
-        # Aplica novos valores
-        st.session_state.zoom = novo_zoom_real
+        # Atualiza zoom e offset baseados na imagem ORIGINAL
+        st.session_state.zoom = max(0.1, w_img / lado_ideal)
         st.session_state.off_x = int((w_img / 2 - cx) * st.session_state.zoom)
         st.session_state.off_y = int((h_img / 2 - cy) * st.session_state.zoom)
         
-        st.toast("✅ Ajuste automático aplicado!")
-        
     except Exception as e:
-        # Se der qualquer outro erro, não quebra o app
-        st.toast(f"Erro ao processar imagem: {str(e)}")
+        st.toast(f"Erro Foco: {e}")
 
 # --- FUNÇÕES GRÁFICAS ---
 def get_preview_scale(img_pil):
-    # Preview fixo pequeno (200px)
-    return 200 / max(img_pil.size)
+    # Aumentei o preview: Max 400px ou largura total se for menor
+    return 400 / max(img_pil.size)
 
 def desenhar_texto(img, texto, chave, escala=1.0):
     if not texto: return img
@@ -183,16 +172,24 @@ def desenhar_texto(img, texto, chave, escala=1.0):
         img.paste(rot_img, (ox, oy), mask=rot_img)
     return img
 
-def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto):
+def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto, escala_proxy=1.0):
+    """
+    CORREÇÃO DO BUG:
+    Agora recebe 'escala_proxy'. Se estivermos cortando a imagem pequena (proxy),
+    precisamos reduzir o offset (que está em pixels da imagem Gigante) proporcionalmente.
+    """
     zoom = st.session_state.zoom
-    if zoom <= 0.01: zoom = 0.1 # Proteção Divisão por Zero
+    if zoom <= 0.01: zoom = 0.1
     
-    off_x = st.session_state.off_x / zoom
-    off_y = st.session_state.off_y / zoom
+    # Converte o offset da Imagem Original para o offset da Imagem Proxy
+    off_x_scaled = (st.session_state.off_x * escala_proxy) / zoom
+    off_y_scaled = (st.session_state.off_y * escala_proxy) / zoom
     
     w_img, h_img = img_pil.size
-    cx, cy = (w_img / 2) - off_x, (h_img / 2) - off_y
-    lado_req = tam_foto[0] / zoom
+    cx, cy = (w_img / 2) - off_x_scaled, (h_img / 2) - off_y_scaled
+    
+    # O tamanho do recorte também escala
+    lado_req = (tam_foto[0] * escala_proxy) / zoom
     
     x1, y1 = int(cx - lado_req/2), int(cy - lado_req/2)
     x2, y2 = int(cx + lado_req/2), int(cy + lado_req/2)
@@ -209,21 +206,20 @@ def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto):
 
 def gerar_final_hd(img_orig, txts):
     try:
-        crop_hd = gerar_recorte(img_orig, MOLDURA_FULL.size, POSICAO_FOTO_FULL, TAM_FINAL_FULL)
+        # Aqui escala_proxy é 1.0, pois estamos usando a original
+        crop_hd = gerar_recorte(img_orig, MOLDURA_FULL.size, POSICAO_FOTO_FULL, TAM_FINAL_FULL, escala_proxy=1.0)
         base_hd = Image.new("RGBA", MOLDURA_FULL.size, "WHITE")
         base_hd.paste(crop_hd, POSICAO_FOTO_FULL)
         base_hd.paste(MOLDURA_FULL, (0,0), mask=MOLDURA_FULL)
         for k, v in txts.items():
             base_hd = desenhar_texto(base_hd, v.upper(), k, escala=1.0)
         buf = io.BytesIO(); base_hd.save(buf, format="PNG"); return buf.getvalue()
-    except:
-        return None
+    except: return None
 
 # --- UI PRINCIPAL ---
 st.title("SIV-PC Web")
 
-# 1. Upload
-uploaded = st.file_uploader("1. Carregar Fotografia", type=['jpg','png','jpeg'])
+uploaded = st.file_uploader("Carregar Fotografia", type=['jpg','png','jpeg'])
 
 if uploaded:
     img_orig = Image.open(uploaded).convert('RGB')
@@ -236,37 +232,22 @@ if uploaded:
     pos_p = (int(POSICAO_FOTO_FULL[0]*f_escala), int(POSICAO_FOTO_FULL[1]*f_escala))
     tam_p = (int(TAM_FINAL_FULL[0]*f_escala), int(TAM_FINAL_FULL[1]*f_escala))
 
-    # 2. Campos de Texto (Layout Solicitado)
+    # CAMPOS DE DADOS
     with st.container():
-        # Linha 1: Situação, Natureza, BO
         c1, c2, c3 = st.columns([1, 1, 1])
         sit = c1.text_input("Situação", "INDICIADO")
         nat = c2.text_input("Natureza")
         out = c3.text_input("Outros (BO/Data)")
-        
-        # Linha 2: Nome, RG
         c4, c5 = st.columns([2, 1])
         nome = c4.text_input("Nome Completo")
         rg = c5.text_input("Documento (RG/CPF)")
 
     st.markdown("---")
 
-    # 3. BARRA DE COMANDOS (Layout Mobile Friendly)
-    # Botões alinhados em uma única linha horizontal no topo
-    st.write("Movimentação e Ajuste:")
-    
-    # Botões de Direção (Cima, Baixo, Esq, Dir) lado a lado
-    # Usando gap="small" para caberem bem no celular
-    col_mov1, col_mov2, col_mov3, col_mov4 = st.columns(4, gap="small")
-    
-    with col_mov1: st.button("⬆️", on_click=cb_up, use_container_width=True)
-    with col_mov2: st.button("⬇️", on_click=cb_down, use_container_width=True)
-    with col_mov3: st.button("⬅️", on_click=cb_left, use_container_width=True)
-    with col_mov4: st.button("➡️", on_click=cb_right, use_container_width=True)
-
-    # 4. PREVIEW (Centralizado)
+    # PREVIEW (Maior e Centralizado)
     try:
-        crop_p = gerar_recorte(img_proxy, moldura_p.size, pos_p, tam_p)
+        # Passamos f_escala para corrigir o bug do Foco/Zoom no Proxy
+        crop_p = gerar_recorte(img_proxy, moldura_p.size, pos_p, tam_p, escala_proxy=f_escala)
         base_p = Image.new("RGBA", moldura_p.size, "WHITE")
         base_p.paste(crop_p, pos_p)
         base_p.paste(moldura_p, (0,0), mask=moldura_p)
@@ -275,20 +256,33 @@ if uploaded:
         for k, v in txts.items():
             base_p = desenhar_texto(base_p, v.upper(), k, escala=f_escala)
             
-        st.image(base_p, width=200, caption="Preview Rápido") # 200px fixo
+        st.image(base_p, caption="Visualização (Ajuste Final)")
     except Exception as e:
         st.error(f"Erro Preview: {e}")
 
-    # 5. CONTROLES DE ZOOM E FOCO (Abaixo do Preview)
-    c_z1, c_z2 = st.columns(2)
-    with c_z1: st.button("➕ Zoom", on_click=cb_zoom_in, use_container_width=True)
-    with c_z2: st.button("➖ Zoom", on_click=cb_zoom_out, use_container_width=True)
+    st.markdown("---")
     
-    c_f1, c_f2 = st.columns(2)
-    with c_f1: st.button("Focar Rosto", on_click=cb_auto_foco, args=(img_orig, "face"), use_container_width=True)
-    with c_f2: st.button("Focar Corpo", on_click=cb_auto_foco, args=(img_orig, "corpo"), use_container_width=True)
+    # BARRA DE COMANDOS
+    # O CSS no topo força isso a ser linha no mobile
+    st.write("**Controles de Posição:**")
+    c_m1, c_m2, c_m3, c_m4 = st.columns(4)
+    with c_m1: st.button("⬆️", on_click=cb_up, use_container_width=True)
+    with c_m2: st.button("⬇️", on_click=cb_down, use_container_width=True)
+    with c_m3: st.button("⬅️", on_click=cb_left, use_container_width=True)
+    with c_m4: st.button("➡️", on_click=cb_right, use_container_width=True)
 
-    # 6. DOWNLOAD
+    # ZOOM E FOCO
+    st.write("")
+    c_sub1, c_sub2 = st.columns(2)
+    with c_sub1:
+        st.button("➕ Zoom", on_click=cb_zoom_in, use_container_width=True)
+        st.button("➖ Zoom", on_click=cb_zoom_out, use_container_width=True)
+    with c_sub2:
+        # Passa img_orig para calcular foco na resolução total
+        st.button("Focar Rosto", on_click=cb_auto_foco, args=(img_orig, "face"), use_container_width=True)
+        st.button("Focar Corpo", on_click=cb_auto_foco, args=(img_orig, "corpo"), use_container_width=True)
+
+    # DOWNLOAD
     st.markdown("---")
     st.download_button(
         label="💾 BAIXAR FOTO FINAL",
@@ -300,7 +294,6 @@ if uploaded:
     )
 
 else:
-    # Reseta Estado
     st.session_state.zoom = 1.0
     st.session_state.off_x = 0
     st.session_state.off_y = 0
