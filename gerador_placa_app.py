@@ -7,48 +7,33 @@ import io
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(page_title="SIV-PC Web", layout="centered", page_icon="👮")
 
-# --- CSS CORRIGIDO (Layout Blindado) ---
+# --- CSS (Limpeza e Tamanho de Botões) ---
 st.markdown("""
     <style>
-    .block-container { padding-top: 0.5rem; padding-bottom: 5rem; }
+    /* Margens */
+    .block-container { padding-top: 1rem; padding-bottom: 5rem; }
     
-    /* 1. CENTRALIZAÇÃO DO PREVIEW */
-    div[data-testid="stImage"] {
-        display: flex;
-        justify_content: center;
-        align-items: center;
-        width: 100%;
-    }
-    img {
-        border: 2px solid #ccc;
-        border-radius: 8px;
-        max-width: 100%;
-    }
-
-    /* 2. BOTÕES DE DIREÇÃO (Força linha única no celular) */
-    /* Encontra as colunas dos botões de movimento e força comportamento horizontal */
-    div[data-testid="column"] {
-        display: flex;
-        align-items: center;
-        justify_content: center;
-    }
-    
-    /* Estilo Botões Grandes */
+    /* Botões de Direção (Quadrados e Grandes) */
     div.stButton > button {
         width: 100%;
-        min-width: 50px; /* Garante que não suma no celular */
-        height: 55px;
-        font-size: 26px;
+        height: 50px;
+        font-size: 24px;
         font-weight: bold;
         border-radius: 8px;
+        border: 1px solid #bbb;
+        margin: 0px;
         padding: 0px;
-        margin: 2px;
         line-height: 1;
     }
     
-    /* Botões de Texto (Zoom/Foco) com fonte menor */
-    div[data-testid="column"] > div > div > div > div > .stButton > button p {
-        font-size: 14px;
+    /* Centralização de Imagens */
+    div[data-testid="stImage"] {
+        display: flex;
+        justify_content: center;
+    }
+    img {
+        border: 2px solid #ccc;
+        border-radius: 5px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -84,25 +69,25 @@ CONFIG_TEXTOS = {
     "outras":   {"box": (82, 2017, 1500, 50), "cor": (0,0,0), "rotate": 0, "bold": False}
 }
 
-# --- ESTADO ---
+# --- ESTADO E CALLBACKS ---
 if 'zoom' not in st.session_state: st.session_state.zoom = 1.0
 if 'off_x' not in st.session_state: st.session_state.off_x = 0
 if 'off_y' not in st.session_state: st.session_state.off_y = 0
 
-# Pixels de movimento
+# Passo de movimento (em pixels da imagem original)
 STEP = 50 
 
-# --- CALLBACKS ---
 def cb_up(): st.session_state.off_y -= STEP
 def cb_down(): st.session_state.off_y += STEP
 def cb_left(): st.session_state.off_x -= STEP
 def cb_right(): st.session_state.off_x += STEP
-def cb_zoom_in(): st.session_state.zoom += 0.1
+def cb_zoom_in(): 
+    if st.session_state.zoom < 3.0: st.session_state.zoom += 0.1
 def cb_zoom_out(): 
     if st.session_state.zoom > 0.2: st.session_state.zoom -= 0.1
 
 def cb_auto_foco(pil_img, modo):
-    """Cálculo corrigido: Zoom baseado no Tamanho do Buraco (1500px)"""
+    """Lógica blindada contra zoom infinito"""
     if FACE_CASCADE is None: return
 
     try:
@@ -111,41 +96,46 @@ def cb_auto_foco(pil_img, modo):
         faces = FACE_CASCADE.detectMultiScale(gray, 1.1, 5)
         
         if len(faces) == 0:
-            st.toast("⚠️ Rosto não detectado.")
+            st.toast("⚠️ Rosto não detectado. Ajuste manualmente.")
             return
 
         h_img, w_img = cv_img.shape[:2]
         (x, y, w, h) = max(faces, key=lambda f: f[2]*f[3])
         
         if modo == "face":
-            # Área alvo: Altura do rosto x 2.8 (um pouco mais folgado)
-            lado_ideal = h * 2.8
+            # Área alvo: Rosto + margem boa
+            lado_ideal = h * 3.0 
             cx, cy = x + w // 2, y + h // 2
         else:
+            # Corpo: Pega do topo do rosto até o peito
             h_proj = h * 8.0
-            lim_inf = min(y + h_proj, h_img - (h * 0.2))
-            h_util = max(lim_inf - y, h * 1.5)
-            lado_ideal = h_util * 1.3
-            cx, cy = x + w // 2, y + h_util // 2
+            lim_inf = min(y + h_proj, h_img)
+            h_util = lim_inf - y
+            lado_ideal = h_util * 1.5
+            cx, cy = x + w // 2, y + h_util // 2.5
             
-        # CORREÇÃO MATEMÁTICA CRÍTICA:
-        # O Zoom deve ser: Quantas vezes a área ideal cabe no buraco de 1500px?
-        # Antes estava w_img / lado_ideal (ERRADO)
-        st.session_state.zoom = 1500 / lado_ideal
+        # --- CÁLCULO SEGURO DE ZOOM ---
+        # Zoom = Tamanho do Buraco / Tamanho do Corte
+        calc_zoom = 1500 / lado_ideal
+        
+        # O FREIO ABS: Limita o zoom entre 0.3x e 2.5x
+        # Isso impede que o rosto "estoure" na tela
+        calc_zoom = max(0.3, min(calc_zoom, 2.5))
+        
+        st.session_state.zoom = calc_zoom
         
         # Recalcula offset para centralizar
         st.session_state.off_x = int((w_img / 2 - cx) * st.session_state.zoom)
         st.session_state.off_y = int((h_img / 2 - cy) * st.session_state.zoom)
         
     except Exception as e:
-        st.toast(f"Erro Foco: {e}")
-        # Reseta zoom se der erro matemático
+        st.error(f"Erro Foco: {e}")
         st.session_state.zoom = 1.0
 
 # --- FUNÇÕES GRÁFICAS ---
 def get_preview_scale(img_pil):
-    # Preview um pouco maior (400px) para ver detalhes, mas centralizado
-    return 400 / max(img_pil.size)
+    # Preview fixo: 250px (tamanho bom para celular e PC)
+    return 250 / max(img_pil.size)
 
 def desenhar_texto(img, texto, chave, escala=1.0):
     if not texto: return img
@@ -186,11 +176,14 @@ def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto, escala_proxy=1.0):
     zoom = st.session_state.zoom
     if zoom <= 0.01: zoom = 0.1
     
+    # Ajusta offset para a escala atual (Proxy ou Full)
     off_x = (st.session_state.off_x * escala_proxy) / zoom
     off_y = (st.session_state.off_y * escala_proxy) / zoom
     
     w_img, h_img = img_pil.size
     cx, cy = (w_img / 2) - off_x, (h_img / 2) - off_y
+    
+    # Tamanho do quadrado a ser cortado da imagem original/proxy
     lado_req = (tam_foto[0] * escala_proxy) / zoom
     
     x1, y1 = int(cx - lado_req/2), int(cy - lado_req/2)
@@ -208,6 +201,7 @@ def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto, escala_proxy=1.0):
 
 def gerar_final_hd(img_orig, txts):
     try:
+        # Escala proxy = 1.0 pois é a imagem original
         crop_hd = gerar_recorte(img_orig, MOLDURA_FULL.size, POSICAO_FOTO_FULL, TAM_FINAL_FULL, escala_proxy=1.0)
         base_hd = Image.new("RGBA", MOLDURA_FULL.size, "WHITE")
         base_hd.paste(crop_hd, POSICAO_FOTO_FULL)
@@ -233,7 +227,7 @@ if uploaded:
     pos_p = (int(POSICAO_FOTO_FULL[0]*f_escala), int(POSICAO_FOTO_FULL[1]*f_escala))
     tam_p = (int(TAM_FINAL_FULL[0]*f_escala), int(TAM_FINAL_FULL[1]*f_escala))
 
-    # CAMPOS DE DADOS
+    # --- CAMPOS DE DADOS ---
     with st.container():
         c1, c2, c3 = st.columns([1, 1, 1])
         sit = c1.text_input("Situação", "INDICIADO")
@@ -245,7 +239,25 @@ if uploaded:
 
     st.markdown("---")
 
-    # PREVIEW CENTRALIZADO
+    # --- CONTROLES DE MOVIMENTO (JOYSTICK) ---
+    # Usando colunas nativas para garantir layout em cruz (Cross)
+    
+    # Linha 1: Botão CIMA (Centralizado)
+    c_u1, c_u2, c_u3 = st.columns([1, 1, 1])
+    with c_u2: st.button("⬆️", on_click=cb_up, use_container_width=True)
+    
+    # Linha 2: ESQ | DIR (Lado a Lado)
+    c_m1, c_m2, c_m3 = st.columns([1, 1, 1])
+    with c_m1: st.button("⬅️", on_click=cb_left, use_container_width=True)
+    # A coluna do meio fica vazia ou com texto de ajuda
+    with c_m2: st.caption("Movimentar") 
+    with c_m3: st.button("➡️", on_click=cb_right, use_container_width=True)
+
+    # Linha 3: Botão BAIXO (Centralizado)
+    c_d1, c_d2, c_d3 = st.columns([1, 1, 1])
+    with c_d2: st.button("⬇️", on_click=cb_down, use_container_width=True)
+
+    # --- PREVIEW CENTRALIZADO ---
     try:
         crop_p = gerar_recorte(img_proxy, moldura_p.size, pos_p, tam_p, escala_proxy=f_escala)
         base_p = Image.new("RGBA", moldura_p.size, "WHITE")
@@ -256,30 +268,22 @@ if uploaded:
         for k, v in txts.items():
             base_p = desenhar_texto(base_p, v.upper(), k, escala=f_escala)
             
-        st.image(base_p, width=280) # Tamanho fixo e alinhamento via CSS
+        st.write("")
+        st.image(base_p, width=250, caption="Preview Final")
     except Exception as e:
         st.error(f"Erro Preview: {e}")
 
-    # BARRA DE COMANDOS (Layout Fixo Horizontal)
-    st.write("**Ajustes:**")
+    # --- ZOOM E FOCO ---
+    st.write("")
+    c_z1, c_z2 = st.columns(2)
+    with c_z1: st.button("➕ Zoom", on_click=cb_zoom_in, use_container_width=True)
+    with c_z2: st.button("➖ Zoom", on_click=cb_zoom_out, use_container_width=True)
     
-    # Força 4 colunas em linha via CSS que definimos no topo
-    col_mov1, col_mov2, col_mov3, col_mov4 = st.columns(4, gap="small")
-    with col_mov1: st.button("⬆️", on_click=cb_up, use_container_width=True)
-    with col_mov2: st.button("⬇️", on_click=cb_down, use_container_width=True)
-    with col_mov3: st.button("⬅️", on_click=cb_left, use_container_width=True)
-    with col_mov4: st.button("➡️", on_click=cb_right, use_container_width=True)
+    c_f1, c_f2 = st.columns(2)
+    with c_f1: st.button("Focar Rosto", on_click=cb_auto_foco, args=(img_orig, "face"), use_container_width=True)
+    with c_f2: st.button("Focar Corpo", on_click=cb_auto_foco, args=(img_orig, "corpo"), use_container_width=True)
 
-    # ZOOM E FOCO
-    c_sub1, c_sub2 = st.columns(2)
-    with c_sub1:
-        st.button("➕ Zoom", on_click=cb_zoom_in, use_container_width=True)
-        st.button("➖ Zoom", on_click=cb_zoom_out, use_container_width=True)
-    with c_sub2:
-        st.button("Focar Rosto", on_click=cb_auto_foco, args=(img_orig, "face"), use_container_width=True)
-        st.button("Focar Corpo", on_click=cb_auto_foco, args=(img_orig, "corpo"), use_container_width=True)
-
-    # DOWNLOAD
+    # --- DOWNLOAD ---
     st.markdown("---")
     st.download_button(
         label="💾 BAIXAR FOTO FINAL",
@@ -291,6 +295,7 @@ if uploaded:
     )
 
 else:
+    # Reset
     st.session_state.zoom = 1.0
     st.session_state.off_x = 0
     st.session_state.off_y = 0
