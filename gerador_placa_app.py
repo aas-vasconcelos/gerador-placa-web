@@ -5,57 +5,65 @@ import io
 # --- CONFIGURAÇÕES DA PÁGINA ---
 st.set_page_config(page_title="SIV-PC Mobile", layout="centered", page_icon="👮")
 
-# --- CSS PARA FORÇAR LAYOUT MOBILE (GRID) ---
+# --- CSS AGRESSIVO PARA LAYOUT MOBILE ---
 st.markdown("""
     <style>
-    /* Ajuste de margens */
+    /* 1. Ajuste de margens gerais */
     .block-container {
-        padding-top: 1rem;
+        padding-top: 0.5rem;
         padding-bottom: 2rem;
         padding-left: 0.5rem;
         padding-right: 0.5rem;
     }
 
-    /* PREVIEW DA IMAGEM */
+    /* 2. PREVIEW DA IMAGEM */
     .stImage > img {
         border: 2px solid #ccc;
         border-radius: 8px;
-        max-height: 40vh; /* Ocupa max 40% da altura da tela */
+        max-height: 35vh; /* Altura máxima para sobrar espaço para botões */
         object-fit: contain;
         width: auto;
         margin: 0 auto;
         display: block;
     }
 
-    /* BOTÕES DO JOYSTICK - FORÇAR GRID 3x2 */
-    /* Isso aqui sobrescreve o comportamento padrão do Streamlit de empilhar tudo */
-    div[data-testid="column"] {
-        width: 33% !important; /* Força 3 colunas na mesma linha */
-        flex: 1 1 auto !important;
-        min-width: 50px !important;
+    /* 3. FORÇAR GRID HORIZONTAL NO CELULAR (O Segredo) */
+    /* Isso obriga os blocos horizontais (st.columns) a NÃO quebrarem linha */
+    div[data-testid="stHorizontalBlock"] {
+        flex-direction: row !important;
+        flex-wrap: nowrap !important;
+        gap: 5px !important; /* Espaço pequeno entre botões */
     }
 
-    /* ESTILO DOS BOTÕES */
+    /* Garante que as colunas se espremam para caber e não tenham largura mínima fixa */
+    div[data-testid="column"] {
+        flex: 1 1 0px !important;
+        min-width: 0px !important;
+    }
+
+    /* 4. ESTILO DOS BOTÕES (Compactos para caber 3 lado a lado) */
     div.stButton > button {
         width: 100%;
-        height: 60px;       /* Botões altos para o dedo */
-        font-size: 24px;
+        height: 55px;       /* Altura boa para o dedo */
+        font-size: 22px;    /* Ícone tamanho médio */
         font-weight: bold;
-        border-radius: 12px;
-        margin: 2px 0px;
-        padding: 0px;
+        border-radius: 10px;
+        margin: 0px !important;
+        padding: 0px !important; /* Sem padding interno para economizar espaço */
         line-height: 1;
-        background-color: #f0f2f6;
-        border: 1px solid #a0a0a0;
+        background-color: #f8f9fa;
+        border: 2px solid #e0e0e0;
+        color: #333;
     }
     
-    /* Botão de Download */
+    /* Botão de Download (Destaque Vermelho) */
     div.stDownloadButton > button {
         width: 100%;
         height: 55px;
-        background-color: #ff4b4b;
+        background-color: #dc3545;
         color: white;
         font-size: 18px;
+        border: none;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -72,7 +80,7 @@ def load_resources():
 
 MOLDURA_FULL = load_resources()
 
-# Parâmetros
+# Parâmetros Fixos
 POSICAO_FOTO_FULL = (113, 321)
 TAM_FINAL_FULL = (1500, 1500)
 FONTE_ARQUIVO = "arial.ttf"
@@ -90,19 +98,20 @@ if 'zoom' not in st.session_state: st.session_state.zoom = 1.0
 if 'off_x' not in st.session_state: st.session_state.off_x = 0
 if 'off_y' not in st.session_state: st.session_state.off_y = 0
 
-STEP = 20 # Ajuste fino
+STEP = 25 # Passo de movimento médio
 
+# Funções que os botões chamam ao clicar
 def mv_up(): st.session_state.off_y -= STEP
 def mv_down(): st.session_state.off_y += STEP
 def mv_left(): st.session_state.off_x -= STEP
 def mv_right(): st.session_state.off_x += STEP
 def z_in(): st.session_state.zoom += 0.1
 def z_out(): 
-    if st.session_state.zoom > 0.1: st.session_state.zoom -= 0.1
+    if st.session_state.zoom > 0.15: st.session_state.zoom -= 0.1
 
 # --- FUNÇÕES GRÁFICAS ---
 def get_preview_scale(img_pil):
-    # Preview fixo de 350px (bom para mobile)
+    # Preview de 350px (bom equilíbrio)
     return 350 / max(img_pil.size)
 
 def desenhar_texto(img, texto, chave, escala=1.0):
@@ -140,10 +149,12 @@ def desenhar_texto(img, texto, chave, escala=1.0):
         img.paste(rot_img, (ox, oy), mask=rot_img)
     return img
 
+# Função de recorte corrigida (recebe os 5 parâmetros necessários)
 def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto, escala_proxy=1.0):
     zoom = st.session_state.zoom
     if zoom <= 0.01: zoom = 0.1
     
+    # Aplica o zoom e a escala do proxy aos offsets
     off_x = (st.session_state.off_x * escala_proxy) / zoom
     off_y = (st.session_state.off_y * escala_proxy) / zoom
     
@@ -166,6 +177,7 @@ def gerar_recorte(img_pil, moldura_size, pos_foto, tam_foto, escala_proxy=1.0):
 
 def gerar_final_hd(img_orig, txts):
     try:
+        # Na imagem final, escala_proxy é 1.0
         crop_hd = gerar_recorte(img_orig, MOLDURA_FULL.size, POSICAO_FOTO_FULL, TAM_FINAL_FULL, escala_proxy=1.0)
         base_hd = Image.new("RGBA", MOLDURA_FULL.size, "WHITE")
         base_hd.paste(crop_hd, POSICAO_FOTO_FULL)
@@ -176,7 +188,7 @@ def gerar_final_hd(img_orig, txts):
     except: return None
 
 # --- UI PRINCIPAL ---
-st.title("SIV-PC Web")
+st.title("SIV-PC Mobile")
 
 # 1. UPLOAD
 uploaded = st.file_uploader("1. Carregar Foto", type=['jpg','png','jpeg'])
@@ -184,7 +196,7 @@ uploaded = st.file_uploader("1. Carregar Foto", type=['jpg','png','jpeg'])
 if uploaded:
     img_orig = Image.open(uploaded).convert('RGB')
     
-    # Proxy para Preview
+    # Prepara Proxy (Imagem leve para o preview)
     f_escala = get_preview_scale(img_orig)
     w_p, h_p = int(img_orig.width * f_escala), int(img_orig.height * f_escala)
     img_proxy = img_orig.resize((w_p, h_p), Image.NEAREST)
@@ -192,54 +204,57 @@ if uploaded:
     pos_p = (int(POSICAO_FOTO_FULL[0]*f_escala), int(POSICAO_FOTO_FULL[1]*f_escala))
     tam_p = (int(TAM_FINAL_FULL[0]*f_escala), int(TAM_FINAL_FULL[1]*f_escala))
 
-    # 2. DADOS (Expander)
-    with st.expander("📝 Preencher Dados", expanded=False):
+    # 2. DADOS (Recolhidos)
+    with st.expander("📝 Dados do Indiciado", expanded=False):
         sit = st.text_input("Situação", "INDICIADO")
         nat = st.text_input("Natureza")
         nome = st.text_input("Nome")
         rg = st.text_input("RG/CPF")
         out = st.text_input("Outros")
 
-    # 3. PREVIEW VISUAL
-    # Removi o st.fragment por enquanto para garantir estabilidade
+    # 3. PREVIEW VISUAL (Centralizado)
     try:
-        crop_p = gerar_recorte(img_proxy, tam_p, escala_proxy=f_escala)
+        # --- CORREÇÃO DO ERRO AQUI ---
+        # Agora passando os 5 argumentos corretos: (img, moldura_size, pos_foto, tam_foto, escala)
+        crop_p = gerar_recorte(img_proxy, moldura_p.size, pos_p, tam_p, escala_proxy=f_escala)
+        
         base_p = Image.new("RGBA", moldura_p.size, "WHITE")
         base_p.paste(crop_p, pos_p)
         base_p.paste(moldura_p, (0,0), mask=moldura_p)
         
-        # Desenha texto (opcional no preview para ser rápido, deixei ativado)
-        txts = {"situacao": sit, "natureza": nat, "nome": nome, "documento": rg, "outras": out}
-        # for k, v in txts.items():
-        #     base_p = desenhar_texto(base_p, v.upper(), k, escala=f_escala)
+        # Opcional: desenhar texto no preview (deixei comentado para ser mais rápido)
+        # txts_p = {"situacao": sit, "natureza": nat, "nome": nome, "documento": rg, "outras": out}
+        # for k, v in txts_p.items(): base_p = desenhar_texto(base_p, v.upper(), k, escala=f_escala)
             
         st.image(base_p, caption="Ajuste a Foto")
     except Exception as e:
         st.error(f"Erro Preview: {e}")
 
-    # 4. CONTROLES (JOYSTICK 3x2)
-    # Aqui usamos o CSS 'width: 33% !important' lá em cima para garantir layout
+    # 4. CONTROLES (Grid 3x2 Forçado via CSS)
+    # O CSS 'flex-wrap: nowrap' garante que eles fiquem na mesma linha
     
     # LINHA 1: [ Zoom - ] [ CIMA ] [ Zoom + ]
     c1, c2, c3 = st.columns([1, 1, 1])
-    with c1: st.button("➖", on_click=z_out, use_container_width=True)
-    with c2: st.button("⬆️", on_click=mv_up, use_container_width=True)
-    with c3: st.button("➕", on_click=z_in, use_container_width=True)
+    with c1: st.button("➖", on_click=z_out, use_container_width=True, help="Menos Zoom")
+    with c2: st.button("⬆️", on_click=mv_up, use_container_width=True, help="Mover Cima")
+    with c3: st.button("➕", on_click=z_in, use_container_width=True, help="Mais Zoom")
 
     # LINHA 2: [ ESQ ] [ BAIXO ] [ DIR ]
+    # Adicionamos um espaçamento vertical pequeno entre as linhas
+    st.write("") 
     c4, c5, c6 = st.columns([1, 1, 1])
-    with c4: st.button("⬅️", on_click=mv_left, use_container_width=True)
-    with c5: st.button("⬇️", on_click=mv_down, use_container_width=True)
-    with c6: st.button("➡️", on_click=mv_right, use_container_width=True)
+    with c4: st.button("⬅️", on_click=mv_left, use_container_width=True, help="Mover Esquerda")
+    with c5: st.button("⬇️", on_click=mv_down, use_container_width=True, help="Mover Baixo")
+    with c6: st.button("➡️", on_click=mv_right, use_container_width=True, help="Mover Direita")
 
     # 5. DOWNLOAD
-    st.write("")
+    st.write("---")
     txts_final = {"situacao": sit, "natureza": nat, "nome": nome, "documento": rg, "outras": out}
     hd_data = gerar_final_hd(img_orig, txts_final)
     
     if hd_data:
         st.download_button(
-            label="💾 BAIXAR FOTO FINAL",
+            label="💾 BAIXAR FOTO FINAL (HD)",
             data=hd_data,
             file_name=f"Placa_{nome.split()[0] if nome else 'PC'}.png",
             mime="image/png",
@@ -248,6 +263,7 @@ if uploaded:
         )
 
 else:
+    # Reset estado
     st.session_state.zoom = 1.0
     st.session_state.off_x = 0
     st.session_state.off_y = 0
