@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SIV-PC Mobile</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
+        
+        /* Containers */
+        .container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        
+        /* Inputs */
+        input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        .row { display: flex; gap: 5px; }
+        .col { flex: 1; }
+        
+        /* Preview (Canvas) */
+        canvas { 
+            width: 100%; 
+            height: auto; 
+            border: 2px solid #333; 
+            border-radius: 5px; 
+            margin-top: 10px;
+            background-color: #eee;
+        }
+
+        /* Controles (Joystick) */
+        .controls { margin-top: 15px; user-select: none; }
+        .btn-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
+        
+        button {
+            background-color: #e1e4e8; border: 1px solid #999; border-radius: 8px;
+            font-size: 24px; width: 60px; height: 60px; cursor: pointer;
+            touch-action: manipulation; /* Melhora resposta no touch */
+        }
+        button:active { background-color: #ccc; transform: scale(0.95); }
+        
+        /* Botão Download */
+        .btn-download {
+            background-color: #28a745; color: white; border: none; width: 100%; 
+            font-size: 18px; height: 50px; margin-top: 15px; font-weight: bold;
+        }
+        
+        /* Título */
+        h2 { margin-top: 0; color: #333; }
+        
+        /* Esconder input file feio */
+        .file-upload {
+            background-color: #007bff; color: white; padding: 10px; border-radius: 5px;
+            cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>SIV-PC Mobile</h2>
+
+    <label class="file-upload">
+        📂 Carregar Fotografia
+        <input type="file" id="upload" accept="image/*" style="display: none;">
+    </label>
+
+    <div class="inputs">
+        <div class="row">
+            <input type="text" id="sit" class="col" placeholder="Situação" value="INDICIADO">
+            <input type="text" id="nat" class="col" placeholder="Natureza">
+            <input type="text" id="out" class="col" placeholder="Outros (BO)">
+        </div>
+        <div class="row">
+            <input type="text" id="nome" class="col" placeholder="Nome Completo" style="flex: 2;">
+            <input type="text" id="rg" class="col" placeholder="RG/CPF" style="flex: 1;">
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div class="controls">
+        <div class="btn-row">
+            <button onclick="zoom(-0.1)">➖</button>
+            <button onclick="move(0, -20)">⬆️</button>
+            <button onclick="zoom(0.1)">➕</button>
+        </div>
+        <div class="btn-row">
+            <button onclick="move(-20, 0)">⬅️</button>
+            <button onclick="move(0, 20)">⬇️</button>
+            <button onclick="move(20, 0)">➡️</button>
+        </div>
+    </div>
+
+    <button class="btn-download" onclick="downloadImage()">💾 BAIXAR FOTO FINAL</button>
+</div>
+
+<script>
+    // Configurações
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    // Variáveis de Estado
+    let molduraImg = new Image();
+    let userImg = new Image();
+    let imgLoaded = false;
+    
+    // Estado do Zoom/Pan
+    let state = {
+        zoom: 1.0,
+        offX: 0,
+        offY: 0
+    };
+
+    // Coordenadas Fixas (Baseadas no seu Python)
+    const FRAME_W = 1654; // Largura aproximada da moldura (ajustar se necessário)
+    const FRAME_H = 2339; // Altura aproximada
+    const PHOTO_X = 113;
+    const PHOTO_Y = 321;
+    const PHOTO_W = 1500;
+    const PHOTO_H = 1500;
+
+    // Carregar Moldura ao iniciar
+    molduraImg.src = 'moldura.png';
+    molduraImg.onload = () => {
+        // Define tamanho interno do canvas para Alta Resolução
+        canvas.width = molduraImg.width;
+        canvas.height = molduraImg.height;
+        draw();
+    };
+
+    // Upload da Foto
+    document.getElementById('upload').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = function(event) {
+            userImg = new Image();
+            userImg.onload = () => {
+                imgLoaded = true;
+                // Auto-fit inicial
+                state.zoom = PHOTO_W / userImg.width;
+                state.offX = 0;
+                state.offY = 0;
+                draw();
+            };
+            userImg.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // Inputs reativos (texto muda na hora)
+    document.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', draw);
+    });
+
+    // Funções de Controle
+    function move(dx, dy) {
+        // Ajusta o movimento baseado no zoom para ser consistente
+        state.offX += dx / state.zoom;
+        state.offY += dy / state.zoom;
+        draw();
+    }
+
+    function zoom(amount) {
+        if (state.zoom + amount > 0.1) {
+            state.zoom += amount;
+            draw();
+        }
+    }
+
+    // Função Principal de Desenho
+    function draw() {
+        // 1. Limpa
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // 2. Fundo Branco
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // 3. Desenha Foto do Usuário (Recortada/Mascarada)
+        if (imgLoaded) {
+            ctx.save();
+            // Cria a máscara (o quadrado onde a foto deve aparecer)
+            ctx.beginPath();
+            ctx.rect(PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
+            ctx.clip(); // Tudo desenhado depois disso só aparece dentro do quadrado
+
+            // Calcula posição
+            // Centro do quadrado da foto
+            const cx = PHOTO_X + PHOTO_W / 2;
+            const cy = PHOTO_Y + PHOTO_H / 2;
+
+            // Transforma o contexto para aplicar zoom/pan
+            ctx.translate(cx, cy);
+            ctx.scale(state.zoom, state.zoom);
+            ctx.translate(-state.offX, -state.offY);
+            
+            // Desenha a imagem centralizada no ponto de transformação
+            ctx.drawImage(userImg, -userImg.width / 2, -userImg.height / 2);
+            
+            ctx.restore();
+        }
+
+        // 4. Desenha Moldura por cima
+        ctx.drawImage(molduraImg, 0, 0);
+
+        // 5. Desenha Textos
+        drawTexts();
+    }
+
+    function drawTexts() {
+        // Configurações de Texto (Baseadas no seu Python)
+        const texts = {
+            situacao: { val: document.getElementById('sit').value, x: 135, y: 608, w: 80, h: 961, rot: 90, color: 'black' },
+            natureza: { val: document.getElementById('nat').value, x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red' },
+            nome:     { val: document.getElementById('nome').value, x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black' },
+            rg:       { val: document.getElementById('rg').value, x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black' },
+            outros:   { val: document.getElementById('out').value, x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black' }
+        };
+
+        ctx.textBaseline = "middle";
+        ctx.textAlign = "center";
+
+        for (const key in texts) {
+            const t = texts[key];
+            const textVal = t.val.toUpperCase();
+            if (!textVal) continue;
+
+            ctx.save();
+            ctx.fillStyle = t.color;
+            
+            // Define fonte base (Arial negrito se for nome/natureza)
+            const isBold = (key === 'nome' || key === 'natureza') ? "bold" : "";
+            
+            // Lógica de rotação e posicionamento
+            let centerX, centerY, maxWidth, maxHeight;
+
+            if (t.rot === 90) {
+                centerX = t.x + t.w / 2;
+                centerY = t.y + t.h / 2;
+                ctx.translate(centerX, centerY);
+                ctx.rotate(Math.PI / 2); // 90 graus
+                maxWidth = t.h; // Invertido pois girou
+                maxHeight = t.w;
+            } else {
+                centerX = t.x + t.w / 2;
+                centerY = t.y + t.h / 2;
+                ctx.translate(centerX, centerY);
+                maxWidth = t.w;
+                maxHeight = t.h;
+            }
+
+            // Auto-fit da fonte (reduz até caber)
+            let fontSize = 300; // Começa grande
+            do {
+                ctx.font = `${isBold} ${fontSize}px Arial`;
+                fontSize -= 5;
+            } while (ctx.measureText(textVal).width > maxWidth && fontSize > 10);
+
+            ctx.fillText(textVal, 0, 0);
+            ctx.restore();
+        }
+    }
+
+    function downloadImage() {
+        if (!imgLoaded) {
+            alert("Por favor, carregue uma foto primeiro.");
+            return;
+        }
+        const link = document.createElement('a');
+        const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
+        link.download = `Placa_${name}.png`;
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+    }
+</script>
+
+</body>
+</html>
