@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v4.0</title>
+    <title>SIV-PC Mobile v5.0</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
         
@@ -56,12 +56,12 @@
 
     <div class="inputs">
         <div class="row">
-            <input type="text" id="sit" class="col" placeholder="Situação">
+            <input type="text" id="sit" class="col" placeholder="Situação" value="INDICIADO">
             <input type="text" id="nat" class="col" placeholder="Natureza">
-            <input type="text" id="out" class="col" placeholder="BO, Data, etc.">
+            <input type="text" id="out" class="col" placeholder="Outros (BO)">
         </div>
         <div class="row">
-            <input type="text" id="nome" class="col" placeholder="Nome" style="flex: 2;">
+            <input type="text" id="nome" class="col" placeholder="Nome Completo" style="flex: 2;">
             <input type="text" id="rg" class="col" placeholder="RG/CPF" style="flex: 1;">
         </div>
     </div>
@@ -174,10 +174,9 @@
 
     function drawTexts() {
         const texts = {
-            // AQUI ESTÁ A ALTERAÇÃO: rot: 270 (antes era 90)
             situacao: { 
                 val: document.getElementById('sit').value, 
-                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 80 
+                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 
             },
             natureza: { 
                 val: document.getElementById('nat').value, 
@@ -189,11 +188,11 @@
             },
             rg: { 
                 val: document.getElementById('rg').value, 
-                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 50 
+                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
             },
             outros: { 
                 val: document.getElementById('out').value, 
-                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 50 
+                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
             }
         };
 
@@ -209,28 +208,94 @@
             ctx.fillStyle = t.color;
             const isBold = (key === 'nome' || key === 'natureza') ? "bold" : "";
             
-            // Centralização
+            // Centralização Base
             const centerX = t.x + t.w / 2;
             const centerY = t.y + t.h / 2;
-            
             ctx.translate(centerX, centerY);
-
-            // CORREÇÃO: Aplica a rotação matemática baseada no valor 'rot'
-            // Converte Graus para Radianos: (Graus * PI) / 180
             ctx.rotate((t.rot * Math.PI) / 180);
 
-            // Se rotacionou 90 ou 270, a largura disponível vira a altura da caixa original
+            // Calcula largura disponível com base na rotação
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
-            let fontSize = t.maxSize; 
-            do {
-                ctx.font = `${isBold} ${fontSize}px Arial`;
-                fontSize -= 2;
-            } while (ctx.measureText(textVal).width > maxWidth && fontSize > 10);
+            // --- LÓGICA ESPECIAL PARA NATUREZA (2 LINHAS) ---
+            if (key === 'natureza') {
+                let minFontSize = 65; // Tamanho mínimo aceitável para 1 linha
+                let fitOneLine = false;
+                let fontSize = t.maxSize;
 
-            ctx.fillText(textVal, 0, 0);
+                // 1. Tenta encaixar em 1 linha até o limite mínimo
+                do {
+                    ctx.font = `${isBold} ${fontSize}px Arial`;
+                    if (ctx.measureText(textVal).width <= maxWidth) {
+                        fitOneLine = true;
+                        break;
+                    }
+                    fontSize -= 2;
+                } while (fontSize >= minFontSize);
+
+                if (fitOneLine) {
+                    // Se coube (Roubo, Furto), desenha normal
+                    ctx.fillText(textVal, 0, 0);
+                } else {
+                    // 2. Se não coube, força 2 linhas
+                    let splitFontSize = 90; // Começa grande para 2 linhas
+                    let lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
+                    
+                    // Se mesmo assim estourar a largura, reduz a fonte das 2 linhas
+                    while (lines.overflow && splitFontSize > 40) {
+                        splitFontSize -= 5;
+                        lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
+                    }
+
+                    // Desenha as 2 linhas
+                    ctx.font = `${isBold} ${splitFontSize}px Arial`;
+                    let lineHeight = splitFontSize * 1.1; // Espaçamento
+                    
+                    // Sobe a primeira linha e desce a segunda para centralizar o bloco
+                    ctx.fillText(lines.l1, 0, -lineHeight/2 + 10); 
+                    ctx.fillText(lines.l2, 0, lineHeight/2 + 10);
+                }
+
+            } else {
+                // --- LÓGICA PADRÃO PARA OUTROS CAMPOS ---
+                let fontSize = t.maxSize; 
+                do {
+                    ctx.font = `${isBold} ${fontSize}px Arial`;
+                    fontSize -= 2;
+                } while (ctx.measureText(textVal).width > maxWidth && fontSize > 10);
+                ctx.fillText(textVal, 0, 0);
+            }
+
             ctx.restore();
         }
+    }
+
+    // Função auxiliar para quebrar texto em 2 linhas
+    function splitTextIntoLines(ctx, text, maxWidth, isBold, fontSize) {
+        ctx.font = `${isBold} ${fontSize}px Arial`;
+        const words = text.split(' ');
+        let line1 = "";
+        let line2 = "";
+        let i = 0;
+
+        // Enche a primeira linha o máximo possível
+        while (i < words.length) {
+            let testLine = line1 + words[i] + " ";
+            if (ctx.measureText(testLine).width < maxWidth) {
+                line1 += words[i] + " ";
+                i++;
+            } else {
+                break; // Vai para a linha 2
+            }
+        }
+        
+        // O resto vai para a linha 2
+        line2 = words.slice(i).join(" ");
+        
+        // Verifica se a linha 2 também estourou (para reduzir a fonte no loop principal)
+        let overflow = ctx.measureText(line2).width > maxWidth;
+        
+        return { l1: line1.trim(), l2: line2.trim(), overflow: overflow };
     }
 
     async function shareImage() {
