@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v3.0</title>
+    <title>SIV-PC Mobile v4.0</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
         
@@ -27,20 +27,17 @@
         }
         button:active { background-color: #ccc; transform: scale(0.95); }
         
-        /* Botões de Ação (Download e Share) */
+        /* Botões de Ação */
         .action-buttons { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
-        
         .btn-action {
             color: white; border: none; width: 100%; border-radius: 8px;
             font-size: 18px; height: 50px; font-weight: bold; cursor: pointer;
             display: flex; align-items: center; justify-content: center; gap: 10px;
         }
-
         .btn-download { background-color: #007bff; }
-        .btn-whatsapp { background-color: #25D366; } /* Verde WhatsApp */
+        .btn-whatsapp { background-color: #25D366; } 
         
         h2 { margin-top: 0; color: #333; }
-        
         .file-upload {
             background-color: #333; color: white; padding: 10px; border-radius: 5px;
             cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold;
@@ -59,12 +56,12 @@
 
     <div class="inputs">
         <div class="row">
-            <input type="text" id="sit" class="col" placeholder="Situação">
+            <input type="text" id="sit" class="col" placeholder="Situação" value="INDICIADO">
             <input type="text" id="nat" class="col" placeholder="Natureza">
-            <input type="text" id="out" class="col" placeholder="BO, Data, etc">
+            <input type="text" id="out" class="col" placeholder="Outros (BO)">
         </div>
         <div class="row">
-            <input type="text" id="nome" class="col" placeholder="Nome" style="flex: 2;">
+            <input type="text" id="nome" class="col" placeholder="Nome Completo" style="flex: 2;">
             <input type="text" id="rg" class="col" placeholder="RG/CPF" style="flex: 1;">
         </div>
     </div>
@@ -88,7 +85,6 @@
         <button class="btn-action btn-whatsapp" onclick="shareImage()">
             <span>📱 Enviar no WhatsApp</span>
         </button>
-        
         <button class="btn-action btn-download" onclick="downloadImage()">
             <span>💾 Salvar na Galeria</span>
         </button>
@@ -102,7 +98,6 @@
     let molduraImg = new Image();
     let userImg = new Image();
     let imgLoaded = false;
-    
     let state = { zoom: 1.0, offX: 0, offY: 0 };
 
     const PHOTO_X = 113;
@@ -179,11 +174,27 @@
 
     function drawTexts() {
         const texts = {
-            situacao: { val: document.getElementById('sit').value, x: 135, y: 608, w: 80, h: 961, rot: 180, color: 'black', maxSize: 60 },
-            natureza: { val: document.getElementById('nat').value, x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 },
-            nome: { val: document.getElementById('nome').value, x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 },
-            rg: { val: document.getElementById('rg').value, x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 },
-            outros: { val: document.getElementById('out').value, x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 }
+            // AQUI ESTÁ A ALTERAÇÃO: rot: 270 (antes era 90)
+            situacao: { 
+                val: document.getElementById('sit').value, 
+                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 
+            },
+            natureza: { 
+                val: document.getElementById('nat').value, 
+                x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 
+            },
+            nome: { 
+                val: document.getElementById('nome').value, 
+                x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 
+            },
+            rg: { 
+                val: document.getElementById('rg').value, 
+                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
+            },
+            outros: { 
+                val: document.getElementById('out').value, 
+                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
+            }
         };
 
         ctx.textBaseline = "middle";
@@ -198,19 +209,18 @@
             ctx.fillStyle = t.color;
             const isBold = (key === 'nome' || key === 'natureza') ? "bold" : "";
             
-            let centerX, centerY, maxWidth;
-            if (t.rot === 90) {
-                centerX = t.x + t.w / 2;
-                centerY = t.y + t.h / 2;
-                ctx.translate(centerX, centerY);
-                ctx.rotate(Math.PI / 2);
-                maxWidth = t.h; 
-            } else {
-                centerX = t.x + t.w / 2;
-                centerY = t.y + t.h / 2;
-                ctx.translate(centerX, centerY);
-                maxWidth = t.w;
-            }
+            // Centralização
+            const centerX = t.x + t.w / 2;
+            const centerY = t.y + t.h / 2;
+            
+            ctx.translate(centerX, centerY);
+
+            // CORREÇÃO: Aplica a rotação matemática baseada no valor 'rot'
+            // Converte Graus para Radianos: (Graus * PI) / 180
+            ctx.rotate((t.rot * Math.PI) / 180);
+
+            // Se rotacionou 90 ou 270, a largura disponível vira a altura da caixa original
+            let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
             let fontSize = t.maxSize; 
             do {
@@ -223,53 +233,31 @@
         }
     }
 
-    // --- FUNÇÃO DE COMPARTILHAMENTO (NOVA) ---
     async function shareImage() {
-        if (!imgLoaded) {
-            alert("Carregue uma foto primeiro.");
-            return;
-        }
-
-        // Verifica se o navegador suporta compartilhamento de arquivos
+        if (!imgLoaded) { alert("Carregue uma foto primeiro."); return; }
         if (!navigator.share || !navigator.canShare) {
-            alert("Seu navegador não suporta compartilhamento direto. Use o botão 'Salvar na Galeria' e envie manualmente.");
-            downloadImage(); // Fallback para download
+            alert("Compartilhamento direto não suportado. Use o botão Salvar.");
+            downloadImage();
             return;
         }
-
         try {
-            // 1. Converte o Canvas para Blob (Arquivo na memória)
             canvas.toBlob(async (blob) => {
                 if (!blob) return;
-
-                // 2. Cria um arquivo 'virtual'
                 const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
                 const file = new File([blob], `Placa_${name}.png`, { type: "image/png" });
-
-                // 3. Tenta compartilhar
                 if (navigator.canShare({ files: [file] })) {
                     await navigator.share({
                         files: [file],
-                        title: 'Placa SIV-PC',
-                        text: `Placa de Identificação: ${name}`
+                        title: 'SIV-PC',
+                        text: `Placa de: ${name}`
                     });
-                } else {
-                    throw new Error("Sistema não permite compartilhar imagens.");
                 }
             }, 'image/png');
-
-        } catch (err) {
-            console.error(err);
-            // Se o usuário cancelar ou der erro, não faz nada (ou avisa se for crítico)
-            // alert("Erro ao compartilhar: " + err.message);
-        }
+        } catch (err) { console.error(err); }
     }
 
     function downloadImage() {
-        if (!imgLoaded) {
-            alert("Por favor, carregue uma foto primeiro.");
-            return;
-        }
+        if (!imgLoaded) { alert("Carregue uma foto primeiro."); return; }
         const link = document.createElement('a');
         const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
         link.download = `Placa_${name}.png`;
