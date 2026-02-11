@@ -1,669 +1,348 @@
 <!DOCTYPE html>
-
 <html lang="pt-BR">
-
 <head>
-
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-
-    <title>SIV-PC Mobile v5.0</title>
-
+    <title>SIV-PC Mobile Final</title>
     <style>
-
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
-
         
-
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-
         
-
-        input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
-
+        input[type="text"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
         .row { display: flex; gap: 5px; }
-
         .col { flex: 1; }
-
         
-
         canvas { 
-
             width: 100%; height: auto; border: 2px solid #333; border-radius: 5px; margin-top: 10px; background-color: #eee;
-
         }
-
-
 
         .controls { margin-top: 15px; user-select: none; }
-
         .btn-row { display: flex; justify-content: center; gap: 10px; margin-bottom: 10px; }
-
         
-
         button {
-
             background-color: #e1e4e8; border: 1px solid #999; border-radius: 8px;
-
             font-size: 24px; width: 60px; height: 60px; cursor: pointer;
-
             touch-action: manipulation; -webkit-tap-highlight-color: transparent;
-
         }
-
         button:active { background-color: #ccc; transform: scale(0.95); }
-
         
-
-        /* Botões de Ação */
-
         .action-buttons { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
-
         .btn-action {
-
             color: white; border: none; width: 100%; border-radius: 8px;
-
             font-size: 18px; height: 50px; font-weight: bold; cursor: pointer;
-
             display: flex; align-items: center; justify-content: center; gap: 10px;
-
         }
-
         .btn-download { background-color: #007bff; }
-
         .btn-whatsapp { background-color: #25D366; } 
-
         
-
         h2 { margin-top: 0; color: #333; }
-
+        
         .file-upload {
-
-            background-color: #333; color: white; padding: 10px; border-radius: 5px;
-
-            cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold;
-
+            background-color: #333; color: white; padding: 15px; border-radius: 5px;
+            cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold; font-size: 18px;
         }
-
+        
+        #loading-status {
+            display: none; color: #e67e22; font-weight: bold; margin: 10px 0; font-size: 16px;
+        }
     </style>
-
 </head>
-
 <body>
 
-
-
 <div class="container">
-
     <h2>SIV-PC Mobile</h2>
 
-
-
     <label class="file-upload">
-
         📷 Tirar/Carregar Foto
-
         <input type="file" id="upload" accept="image/*" style="display: none;">
-
     </label>
 
-
+    <div id="loading-status">⏳ Carregando foto...</div>
 
     <div class="inputs">
-
         <div class="row">
-
-            <input type="text" id="sit" class="col" placeholder="Situação">
-
+            <input type="text" id="sit" class="col" placeholder="Situação" value="INDICIADO">
             <input type="text" id="nat" class="col" placeholder="Natureza">
-
             <input type="text" id="out" class="col" placeholder="BO, Data, etc.">
-
         </div>
-
         <div class="row">
-
-            <input type="text" id="nome" class="col" placeholder="Nome" style="flex: 2;">
-
+            <input type="text" id="nome" class="col" placeholder="Nome Completo" style="flex: 2;">
             <input type="text" id="rg" class="col" placeholder="RG/CPF" style="flex: 1;">
-
         </div>
-
     </div>
-
-
 
     <canvas id="canvas"></canvas>
 
-
-
     <div class="controls">
-
         <div class="btn-row">
-
             <button onclick="zoom(-0.1)">➖</button>
-
             <button onclick="move(0, -40)">⬆️</button>
-
             <button onclick="zoom(0.1)">➕</button>
-
         </div>
-
         <div class="btn-row">
-
             <button onclick="move(-40, 0)">⬅️</button>
-
             <button onclick="move(0, 40)">⬇️</button>
-
             <button onclick="move(40, 0)">➡️</button>
-
         </div>
-
     </div>
-
-
 
     <div class="action-buttons">
-
         <button class="btn-action btn-whatsapp" onclick="shareImage()">
-
             <span>📱 Enviar no WhatsApp</span>
-
         </button>
-
         <button class="btn-action btn-download" onclick="downloadImage()">
-
             <span>💾 Salvar na Galeria</span>
-
         </button>
-
     </div>
-
 </div>
 
-
-
 <script>
-
     const canvas = document.getElementById('canvas');
-
     const ctx = canvas.getContext('2d');
-
+    const statusDiv = document.getElementById('loading-status');
     
-
     let molduraImg = new Image();
-
     let userImg = new Image();
-
     let imgLoaded = false;
-
+    
     let state = { zoom: 1.0, offX: 0, offY: 0 };
 
-
-
     const PHOTO_X = 113;
-
     const PHOTO_Y = 321;
-
     const PHOTO_W = 1500;
-
     const PHOTO_H = 1500;
 
-
-
     molduraImg.crossOrigin = "anonymous";
-
     molduraImg.src = 'moldura.png';
-
     molduraImg.onload = () => {
-
         canvas.width = molduraImg.width;
-
         canvas.height = molduraImg.height;
-
         draw();
-
     };
 
-
-
+    // --- CORREÇÃO DE MEMÓRIA (URL.createObjectURL) ---
+    // Isso deve resolver o problema da foto recente não carregar
     document.getElementById('upload').addEventListener('change', function(e) {
-
         const file = e.target.files[0];
-
         if(!file) return;
 
-        const reader = new FileReader();
+        statusDiv.style.display = 'block';
 
-        reader.onload = function(event) {
+        // Libera memória da foto anterior
+        if (userImg.src) { URL.revokeObjectURL(userImg.src); }
 
-            userImg = new Image();
-
-            userImg.onload = () => {
-
-                imgLoaded = true;
-
-                const minSide = Math.min(userImg.width, userImg.height);
-
-                state.zoom = PHOTO_W / minSide;
-
-                state.offX = 0;
-
-                state.offY = 0;
-
-                draw();
-
-            };
-
-            userImg.src = event.target.result;
-
+        userImg = new Image();
+        
+        userImg.onload = () => {
+            imgLoaded = true;
+            statusDiv.style.display = 'none';
+            // Zoom automático inicial
+            const minSide = Math.min(userImg.width, userImg.height);
+            state.zoom = PHOTO_W / minSide; 
+            state.offX = 0;
+            state.offY = 0;
+            draw();
         };
 
-        reader.readAsDataURL(file);
-
+        userImg.onerror = () => {
+            statusDiv.style.display = 'none';
+            alert("Erro ao ler a imagem.");
+        };
+        
+        // Cria link direto (sem gastar memória RAM convertendo pra texto)
+        try {
+            userImg.src = URL.createObjectURL(file);
+        } catch (err) {
+            statusDiv.style.display = 'none';
+            alert("Erro: " + err.message);
+        }
     });
-
-
 
     document.querySelectorAll('input').forEach(input => {
-
         input.addEventListener('input', draw);
-
     });
 
-
-
     function move(dx, dy) {
-
         state.offX += dx / state.zoom;
-
         state.offY += dy / state.zoom;
-
         draw();
-
     }
-
-
 
     function zoom(amount) {
-
         if (state.zoom + amount > 0.05) {
-
             state.zoom += amount;
-
             draw();
-
         }
-
     }
-
-
 
     function draw() {
-
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
         ctx.fillStyle = "white";
-
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-
-
         if (imgLoaded) {
-
             ctx.save();
-
             ctx.beginPath();
-
             ctx.rect(PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
-
             ctx.clip(); 
-
             const cx = PHOTO_X + PHOTO_W / 2;
-
             const cy = PHOTO_Y + PHOTO_H / 2;
-
             ctx.translate(cx, cy);
-
             ctx.scale(state.zoom, state.zoom);
-
             ctx.translate(-state.offX, -state.offY);
-
             ctx.drawImage(userImg, -userImg.width / 2, -userImg.height / 2);
-
             ctx.restore();
-
         }
 
-
-
         ctx.drawImage(molduraImg, 0, 0);
-
         drawTexts();
-
     }
 
-
-
     function drawTexts() {
-
         const texts = {
-
             situacao: { 
-
                 val: document.getElementById('sit').value, 
-
-                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 80 
-
+                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 
             },
-
             natureza: { 
-
                 val: document.getElementById('nat').value, 
-
                 x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 
-
             },
-
             nome: { 
-
                 val: document.getElementById('nome').value, 
-
                 x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 
-
             },
-
             rg: { 
-
                 val: document.getElementById('rg').value, 
-
-                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 50 
-
+                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
             },
-
             outros: { 
-
                 val: document.getElementById('out').value, 
-
-                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 50 
-
+                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
             }
-
         };
 
-
-
         ctx.textBaseline = "middle";
-
         ctx.textAlign = "center";
 
-
-
         for (const key in texts) {
-
             const t = texts[key];
-
             const textVal = t.val.toUpperCase();
-
             if (!textVal) continue;
 
-
-
             ctx.save();
-
             ctx.fillStyle = t.color;
-
-            const isBold = (key === 'nome' || key === 'natureza' || key === 'rg' || key === 'outros') ? "bold" : "";
-
+            const isBold = (key === 'nome' || key === 'natureza') ? "bold" : "";
             
-
-            // Centralização Base
-
             const centerX = t.x + t.w / 2;
-
             const centerY = t.y + t.h / 2;
-
             ctx.translate(centerX, centerY);
-
             ctx.rotate((t.rot * Math.PI) / 180);
-
-
-
-            // Calcula largura disponível com base na rotação
 
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
-
-
-            // --- LÓGICA ESPECIAL PARA NATUREZA (2 LINHAS) ---
-
+            // --- LÓGICA ESPECIAL NATUREZA (2 LINHAS) ---
             if (key === 'natureza') {
-
-                let minFontSize = 65; // Tamanho mínimo aceitável para 1 linha
-
+                let minFontSize = 65;
                 let fitOneLine = false;
-
                 let fontSize = t.maxSize;
 
-
-
-                // 1. Tenta encaixar em 1 linha até o limite mínimo
-
+                // Tenta 1 linha
                 do {
-
                     ctx.font = `${isBold} ${fontSize}px Arial`;
-
                     if (ctx.measureText(textVal).width <= maxWidth) {
-
                         fitOneLine = true;
-
                         break;
-
                     }
-
                     fontSize -= 2;
-
                 } while (fontSize >= minFontSize);
 
-
-
                 if (fitOneLine) {
-
-                    // Se coube (Roubo, Furto), desenha normal
-
                     ctx.fillText(textVal, 0, 0);
-
                 } else {
-
-                    // 2. Se não coube, força 2 linhas
-
-                    let splitFontSize = 90; // Começa grande para 2 linhas
-
+                    // Força 2 linhas
+                    let splitFontSize = 90;
                     let lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
-
                     
-
-                    // Se mesmo assim estourar a largura, reduz a fonte das 2 linhas
-
                     while (lines.overflow && splitFontSize > 40) {
-
                         splitFontSize -= 5;
-
                         lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
-
                     }
 
-
-
-                    // Desenha as 2 linhas
-
                     ctx.font = `${isBold} ${splitFontSize}px Arial`;
-
-                    let lineHeight = splitFontSize * 1.1; // Espaçamento
-
+                    let lineHeight = splitFontSize * 1.1;
                     
-
-                    // Sobe a primeira linha e desce a segunda para centralizar o bloco
-
                     ctx.fillText(lines.l1, 0, -lineHeight/2 + 10); 
-
                     ctx.fillText(lines.l2, 0, lineHeight/2 + 10);
-
                 }
 
-
-
             } else {
-
-                // --- LÓGICA PADRÃO PARA OUTROS CAMPOS ---
-
                 let fontSize = t.maxSize; 
-
                 do {
-
                     ctx.font = `${isBold} ${fontSize}px Arial`;
-
                     fontSize -= 2;
-
                 } while (ctx.measureText(textVal).width > maxWidth && fontSize > 10);
-
                 ctx.fillText(textVal, 0, 0);
-
             }
-
-
 
             ctx.restore();
-
         }
-
     }
-
-
-
-    // Função auxiliar para quebrar texto em 2 linhas
 
     function splitTextIntoLines(ctx, text, maxWidth, isBold, fontSize) {
-
         ctx.font = `${isBold} ${fontSize}px Arial`;
-
         const words = text.split(' ');
-
         let line1 = "";
-
         let line2 = "";
-
         let i = 0;
 
-
-
-        // Enche a primeira linha o máximo possível
-
         while (i < words.length) {
-
             let testLine = line1 + words[i] + " ";
-
             if (ctx.measureText(testLine).width < maxWidth) {
-
                 line1 += words[i] + " ";
-
                 i++;
-
             } else {
-
-                break; // Vai para a linha 2
-
+                break;
             }
-
         }
-
-        
-
-        // O resto vai para a linha 2
-
         line2 = words.slice(i).join(" ");
-
-        
-
-        // Verifica se a linha 2 também estourou (para reduzir a fonte no loop principal)
-
         let overflow = ctx.measureText(line2).width > maxWidth;
-
-        
-
         return { l1: line1.trim(), l2: line2.trim(), overflow: overflow };
-
     }
-
-
 
     async function shareImage() {
-
         if (!imgLoaded) { alert("Carregue uma foto primeiro."); return; }
-
         if (!navigator.share || !navigator.canShare) {
-
             alert("Compartilhamento direto não suportado. Use o botão Salvar.");
-
             downloadImage();
-
             return;
-
         }
-
         try {
-
             canvas.toBlob(async (blob) => {
-
                 if (!blob) return;
-
                 const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
-
                 const file = new File([blob], `Placa_${name}.png`, { type: "image/png" });
-
                 if (navigator.canShare({ files: [file] })) {
-
                     await navigator.share({
-
                         files: [file],
-
                         title: 'SIV-PC',
-
                         text: `Placa de: ${name}`
-
                     });
-
                 }
-
             }, 'image/png');
-
         } catch (err) { console.error(err); }
-
     }
-
-
 
     function downloadImage() {
-
         if (!imgLoaded) { alert("Carregue uma foto primeiro."); return; }
-
         const link = document.createElement('a');
-
         const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
-
         link.download = `Placa_${name}.png`;
-
         link.href = canvas.toDataURL('image/png');
-
         link.click();
-
     }
-
 </script>
 
-
-
 </body>
-
 </html>
