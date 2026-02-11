@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v6.0</title>
+    <title>SIV-PC Mobile v6.1</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
         
@@ -57,7 +57,7 @@
 
     <label class="file-upload">
         📷 Tirar/Carregar Foto
-        <input type="file" id="upload" accept="image/png, image/jpeg" style="display: none;">
+        <input type="file" id="upload" accept="image/*" style="display: none;">
     </label>
 
     <div id="loading-status">⏳ Processando imagem... aguarde...</div>
@@ -122,32 +122,29 @@
         draw();
     };
 
-    // --- CARREGAMENTO DE IMAGEM ROBUSTO ---
+    // --- CARREGAMENTO OTIMIZADO ---
     document.getElementById('upload').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
 
-        // Mostra aviso de carregando
+        // Mostra aviso
         statusDiv.style.display = 'block';
 
-        // Revoga URL anterior para liberar memória
         if (userImg.src) {
             URL.revokeObjectURL(userImg.src);
         }
 
         userImg = new Image();
         
-        // Tratamento de Erro
         userImg.onerror = function() {
             statusDiv.style.display = 'none';
-            alert("Erro ao carregar a imagem. Tente uma foto menor ou tire um print da foto.");
+            alert("Erro ao ler o arquivo. Tente tirar um print da foto e carregar o print.");
         };
 
         userImg.onload = () => {
             imgLoaded = true;
-            statusDiv.style.display = 'none'; // Esconde aviso
+            statusDiv.style.display = 'none'; 
 
-            // Auto-fit inicial
             const minSide = Math.min(userImg.width, userImg.height);
             state.zoom = PHOTO_W / minSide; 
             state.offX = 0;
@@ -155,12 +152,11 @@
             draw();
         };
         
-        // Cria URL temporária
         try {
             userImg.src = URL.createObjectURL(file);
         } catch (err) {
             statusDiv.style.display = 'none';
-            alert("Erro de memória: " + err.message);
+            alert("Erro: " + err.message);
         }
     });
 
@@ -247,7 +243,7 @@
 
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
-            // Lógica Natureza (2 Linhas)
+            // Natureza (2 Linhas)
             if (key === 'natureza') {
                 let minFontSize = 65;
                 let fitOneLine = false;
@@ -330,7 +326,7 @@
                     await navigator.share({
                         files: [file],
                         title: 'SIV-PC',
-                        text: ``
+                        text: `Placa de: ${name}`
                     });
                 }
             }, 'image/png');
