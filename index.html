@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v5.1</title>
+    <title>SIV-PC Mobile v6.0</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
         
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         
-        input[type="text"], input[type="file"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+        input[type="text"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
         .row { display: flex; gap: 5px; }
         .col { flex: 1; }
         
@@ -27,7 +27,6 @@
         }
         button:active { background-color: #ccc; transform: scale(0.95); }
         
-        /* Botões de Ação */
         .action-buttons { margin-top: 15px; display: flex; flex-direction: column; gap: 10px; }
         .btn-action {
             color: white; border: none; width: 100%; border-radius: 8px;
@@ -38,9 +37,16 @@
         .btn-whatsapp { background-color: #25D366; } 
         
         h2 { margin-top: 0; color: #333; }
+        
+        /* Botão de Upload Estilizado */
         .file-upload {
-            background-color: #333; color: white; padding: 10px; border-radius: 5px;
-            cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold;
+            background-color: #333; color: white; padding: 15px; border-radius: 5px;
+            cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold; font-size: 18px;
+        }
+        
+        /* Status de Carregamento */
+        #loading-status {
+            display: none; color: #007bff; font-weight: bold; margin: 10px 0; font-size: 18px;
         }
     </style>
 </head>
@@ -51,14 +57,16 @@
 
     <label class="file-upload">
         📷 Tirar/Carregar Foto
-        <input type="file" id="upload" accept="image/*" style="display: none;">
+        <input type="file" id="upload" accept="image/png, image/jpeg" style="display: none;">
     </label>
+
+    <div id="loading-status">⏳ Processando imagem... aguarde...</div>
 
     <div class="inputs">
         <div class="row">
             <input type="text" id="sit" class="col" placeholder="Situação" value="INDICIADO">
             <input type="text" id="nat" class="col" placeholder="Natureza">
-            <input type="text" id="out" class="col" placeholder="Outros (BO)">
+            <input type="text" id="out" class="col" placeholder="BO, Data, etc.">
         </div>
         <div class="row">
             <input type="text" id="nome" class="col" placeholder="Nome Completo" style="flex: 2;">
@@ -94,6 +102,7 @@
 <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
+    const statusDiv = document.getElementById('loading-status');
     
     let molduraImg = new Image();
     let userImg = new Image();
@@ -113,30 +122,46 @@
         draw();
     };
 
-    // --- CORREÇÃO DE CARREGAMENTO (USANDO URL OBJECT) ---
+    // --- CARREGAMENTO DE IMAGEM ROBUSTO ---
     document.getElementById('upload').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
 
-        // Limpa memória da imagem anterior se houver
+        // Mostra aviso de carregando
+        statusDiv.style.display = 'block';
+
+        // Revoga URL anterior para liberar memória
         if (userImg.src) {
             URL.revokeObjectURL(userImg.src);
         }
 
         userImg = new Image();
+        
+        // Tratamento de Erro
+        userImg.onerror = function() {
+            statusDiv.style.display = 'none';
+            alert("Erro ao carregar a imagem. Tente uma foto menor ou tire um print da foto.");
+        };
+
         userImg.onload = () => {
             imgLoaded = true;
-            // Auto-fit inicial inteligente
+            statusDiv.style.display = 'none'; // Esconde aviso
+
+            // Auto-fit inicial
             const minSide = Math.min(userImg.width, userImg.height);
             state.zoom = PHOTO_W / minSide; 
             state.offX = 0;
             state.offY = 0;
             draw();
-            // Importante: NÃO revogar o URL imediatamente aqui, pois precisamos dele para redesenhar
         };
         
-        // Cria um link temporário para o arquivo no dispositivo (muito rápido e leve)
-        userImg.src = URL.createObjectURL(file);
+        // Cria URL temporária
+        try {
+            userImg.src = URL.createObjectURL(file);
+        } catch (err) {
+            statusDiv.style.display = 'none';
+            alert("Erro de memória: " + err.message);
+        }
     });
 
     document.querySelectorAll('input').forEach(input => {
@@ -222,7 +247,7 @@
 
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
-            // --- LÓGICA ESPECIAL NATUREZA (2 LINHAS) ---
+            // Lógica Natureza (2 Linhas)
             if (key === 'natureza') {
                 let minFontSize = 65;
                 let fitOneLine = false;
