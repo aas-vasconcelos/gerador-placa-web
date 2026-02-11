@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v6.1</title>
+    <title>SIV-PC Mobile v7.0 (Anti-Crash)</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
         
@@ -38,13 +38,11 @@
         
         h2 { margin-top: 0; color: #333; }
         
-        /* Botão de Upload Estilizado */
         .file-upload {
             background-color: #333; color: white; padding: 15px; border-radius: 5px;
             cursor: pointer; display: block; margin-bottom: 15px; font-weight: bold; font-size: 18px;
         }
         
-        /* Status de Carregamento */
         #loading-status {
             display: none; color: #007bff; font-weight: bold; margin: 10px 0; font-size: 18px;
         }
@@ -109,56 +107,79 @@
     let imgLoaded = false;
     let state = { zoom: 1.0, offX: 0, offY: 0 };
 
+    // COORDENADAS ORIGINAIS (Não mexemos aqui)
     const PHOTO_X = 113;
     const PHOTO_Y = 321;
     const PHOTO_W = 1500;
     const PHOTO_H = 1500;
 
+    // FATOR DE ESCALA GLOBAL (Segurança de Memória)
+    // Se a moldura for maior que 2000px, vamos reduzir tudo proporcionalmente
+    const MAX_CANVAS_WIDTH = 2000; 
+    let globalScale = 1.0; 
+
     molduraImg.crossOrigin = "anonymous";
     molduraImg.src = 'moldura.png';
     molduraImg.onload = () => {
-        canvas.width = molduraImg.width;
-        canvas.height = molduraImg.height;
+        // Calcula se precisa reduzir
+        if (molduraImg.width > MAX_CANVAS_WIDTH) {
+            globalScale = MAX_CANVAS_WIDTH / molduraImg.width;
+        } else {
+            globalScale = 1.0;
+        }
+
+        // Define o tamanho REAL do canvas (reduzido se necessário)
+        canvas.width = molduraImg.width * globalScale;
+        canvas.height = molduraImg.height * globalScale;
+
+        // A Mágica: Dizemos ao Canvas para escalar TUDO que desenharmos daqui pra frente
+        // Assim podemos continuar usando as coordenadas originais (1500, etc) e ele reduz sozinho
+        ctx.scale(globalScale, globalScale);
+        
         draw();
     };
 
-    // --- CARREGAMENTO OTIMIZADO ---
     document.getElementById('upload').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
 
-        // Mostra aviso
         statusDiv.style.display = 'block';
 
-        if (userImg.src) {
-            URL.revokeObjectURL(userImg.src);
-        }
+        if (userImg.src) { URL.revokeObjectURL(userImg.src); }
 
         userImg = new Image();
         
         userImg.onerror = function() {
             statusDiv.style.display = 'none';
-            alert("Erro ao ler o arquivo. Tente tirar um print da foto e carregar o print.");
+            // Fallback: Tenta ler como Base64 se ObjectURL falhar (alguns Androids antigos precisam disso)
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                userImg = new Image();
+                userImg.onload = onLoadSuccess;
+                userImg.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
         };
 
-        userImg.onload = () => {
-            imgLoaded = true;
-            statusDiv.style.display = 'none'; 
-
-            const minSide = Math.min(userImg.width, userImg.height);
-            state.zoom = PHOTO_W / minSide; 
-            state.offX = 0;
-            state.offY = 0;
-            draw();
-        };
+        userImg.onload = onLoadSuccess;
         
         try {
             userImg.src = URL.createObjectURL(file);
         } catch (err) {
             statusDiv.style.display = 'none';
-            alert("Erro: " + err.message);
+            alert("Erro fatal: " + err.message);
         }
     });
+
+    function onLoadSuccess() {
+        imgLoaded = true;
+        statusDiv.style.display = 'none'; 
+        const minSide = Math.min(userImg.width, userImg.height);
+        state.zoom = PHOTO_W / minSide; 
+        state.offX = 0;
+        state.offY = 0;
+        draw();
+    }
 
     document.querySelectorAll('input').forEach(input => {
         input.addEventListener('input', draw);
@@ -178,9 +199,12 @@
     }
 
     function draw() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Limpa usando as dimensões REAIS (dividindo pela escala pois o contexto está escalado)
+        ctx.clearRect(0, 0, canvas.width / globalScale, canvas.height / globalScale);
+        
+        // Fundo Branco
         ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillRect(0, 0, canvas.width / globalScale, canvas.height / globalScale);
 
         if (imgLoaded) {
             ctx.save();
@@ -202,26 +226,11 @@
 
     function drawTexts() {
         const texts = {
-            situacao: { 
-                val: document.getElementById('sit').value, 
-                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 
-            },
-            natureza: { 
-                val: document.getElementById('nat').value, 
-                x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 
-            },
-            nome: { 
-                val: document.getElementById('nome').value, 
-                x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 
-            },
-            rg: { 
-                val: document.getElementById('rg').value, 
-                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
-            },
-            outros: { 
-                val: document.getElementById('out').value, 
-                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
-            }
+            situacao: { val: document.getElementById('sit').value, x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 },
+            natureza: { val: document.getElementById('nat').value, x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 },
+            nome: { val: document.getElementById('nome').value, x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 },
+            rg: { val: document.getElementById('rg').value, x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 },
+            outros: { val: document.getElementById('out').value, x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 }
         };
 
         ctx.textBaseline = "middle";
@@ -243,7 +252,6 @@
 
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
-            // Natureza (2 Linhas)
             if (key === 'natureza') {
                 let minFontSize = 65;
                 let fitOneLine = false;
@@ -263,19 +271,15 @@
                 } else {
                     let splitFontSize = 90;
                     let lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
-                    
                     while (lines.overflow && splitFontSize > 40) {
                         splitFontSize -= 5;
                         lines = splitTextIntoLines(ctx, textVal, maxWidth, isBold, splitFontSize);
                     }
-
                     ctx.font = `${isBold} ${splitFontSize}px Arial`;
                     let lineHeight = splitFontSize * 1.1;
-                    
                     ctx.fillText(lines.l1, 0, -lineHeight/2 + 10); 
                     ctx.fillText(lines.l2, 0, lineHeight/2 + 10);
                 }
-
             } else {
                 let fontSize = t.maxSize; 
                 do {
@@ -284,7 +288,6 @@
                 } while (ctx.measureText(textVal).width > maxWidth && fontSize > 10);
                 ctx.fillText(textVal, 0, 0);
             }
-
             ctx.restore();
         }
     }
@@ -295,15 +298,12 @@
         let line1 = "";
         let line2 = "";
         let i = 0;
-
         while (i < words.length) {
             let testLine = line1 + words[i] + " ";
             if (ctx.measureText(testLine).width < maxWidth) {
                 line1 += words[i] + " ";
                 i++;
-            } else {
-                break;
-            }
+            } else { break; }
         }
         line2 = words.slice(i).join(" ");
         let overflow = ctx.measureText(line2).width > maxWidth;
