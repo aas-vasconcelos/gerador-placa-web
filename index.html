@@ -3,16 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>SIV-PC Mobile v7.0 (Anti-Crash)</title>
+    <title>SIV-PC Mobile v8.0</title>
     <style>
         body { font-family: Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; text-align: center; }
-        
         .container { max-width: 600px; margin: 0 auto; background: white; padding: 15px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
         
         input[type="text"] { width: 100%; padding: 10px; margin: 5px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
         .row { display: flex; gap: 5px; }
         .col { flex: 1; }
         
+        /* Canvas Responsivo */
         canvas { 
             width: 100%; height: auto; border: 2px solid #333; border-radius: 5px; margin-top: 10px; background-color: #eee;
         }
@@ -44,7 +44,7 @@
         }
         
         #loading-status {
-            display: none; color: #007bff; font-weight: bold; margin: 10px 0; font-size: 18px;
+            display: none; color: #e67e22; font-weight: bold; margin: 10px 0; font-size: 16px;
         }
     </style>
 </head>
@@ -58,7 +58,7 @@
         <input type="file" id="upload" accept="image/*" style="display: none;">
     </label>
 
-    <div id="loading-status">⏳ Processando imagem... aguarde...</div>
+    <div id="loading-status">⏳ Otimizando foto... aguarde...</div>
 
     <div class="inputs">
         <div class="row">
@@ -102,89 +102,124 @@
     const ctx = canvas.getContext('2d');
     const statusDiv = document.getElementById('loading-status');
     
+    // ESTADO GLOBAL
     let molduraImg = new Image();
     let userImg = new Image();
     let imgLoaded = false;
+    let molduraLoaded = false;
+    
+    // VARIÁVEIS DE POSIÇÃO E ZOOM
     let state = { zoom: 1.0, offX: 0, offY: 0 };
 
-    // COORDENADAS ORIGINAIS (Não mexemos aqui)
+    // CONFIGURAÇÕES FIXAS (Não alterar)
     const PHOTO_X = 113;
     const PHOTO_Y = 321;
     const PHOTO_W = 1500;
     const PHOTO_H = 1500;
 
-    // FATOR DE ESCALA GLOBAL (Segurança de Memória)
-    // Se a moldura for maior que 2000px, vamos reduzir tudo proporcionalmente
-    const MAX_CANVAS_WIDTH = 2000; 
-    let globalScale = 1.0; 
-
+    // --- 1. CARREGAMENTO INICIAL DA MOLDURA ---
     molduraImg.crossOrigin = "anonymous";
     molduraImg.src = 'moldura.png';
     molduraImg.onload = () => {
-        // Calcula se precisa reduzir
-        if (molduraImg.width > MAX_CANVAS_WIDTH) {
-            globalScale = MAX_CANVAS_WIDTH / molduraImg.width;
-        } else {
-            globalScale = 1.0;
-        }
-
-        // Define o tamanho REAL do canvas (reduzido se necessário)
-        canvas.width = molduraImg.width * globalScale;
-        canvas.height = molduraImg.height * globalScale;
-
-        // A Mágica: Dizemos ao Canvas para escalar TUDO que desenharmos daqui pra frente
-        // Assim podemos continuar usando as coordenadas originais (1500, etc) e ele reduz sozinho
-        ctx.scale(globalScale, globalScale);
-        
-        draw();
+        molduraLoaded = true;
+        // Ajusta o canvas para o tamanho exato da moldura
+        canvas.width = molduraImg.width;
+        canvas.height = molduraImg.height;
+        draw(); // Desenha a moldura vazia inicialmente
     };
+    molduraImg.onerror = () => { alert("Erro: moldura.png não encontrada!"); };
 
+    // --- 2. SISTEMA DE UPLOAD COM REDUÇÃO (A Solução) ---
     document.getElementById('upload').addEventListener('change', function(e) {
         const file = e.target.files[0];
         if(!file) return;
 
         statusDiv.style.display = 'block';
+        statusDiv.innerText = "⏳ Otimizando foto... aguarde...";
 
-        if (userImg.src) { URL.revokeObjectURL(userImg.src); }
+        // Processo de Redução
+        resizeImage(file, 1200, function(resizedDataUrl) {
+            if (!resizedDataUrl) {
+                statusDiv.style.display = 'none';
+                alert("Erro: Memória cheia. Tire um PRINT da foto e tente carregar o print.");
+                return;
+            }
 
-        userImg = new Image();
-        
-        userImg.onerror = function() {
-            statusDiv.style.display = 'none';
-            // Fallback: Tenta ler como Base64 se ObjectURL falhar (alguns Androids antigos precisam disso)
-            const reader = new FileReader();
-            reader.onload = function(event) {
-                userImg = new Image();
-                userImg.onload = onLoadSuccess;
-                userImg.src = event.target.result;
+            userImg = new Image();
+            userImg.onload = () => {
+                imgLoaded = true;
+                statusDiv.style.display = 'none';
+                
+                // Auto-fit (Zoom Automático)
+                const minSide = Math.min(userImg.width, userImg.height);
+                state.zoom = PHOTO_W / minSide; 
+                state.offX = 0;
+                state.offY = 0;
+                
+                draw();
             };
-            reader.readAsDataURL(file);
-        };
-
-        userImg.onload = onLoadSuccess;
-        
-        try {
-            userImg.src = URL.createObjectURL(file);
-        } catch (err) {
-            statusDiv.style.display = 'none';
-            alert("Erro fatal: " + err.message);
-        }
+            userImg.onerror = () => {
+                statusDiv.style.display = 'none';
+                alert("Erro ao desenhar imagem.");
+            };
+            userImg.src = resizedDataUrl; // Carrega a imagem JÁ reduzida
+        });
     });
 
-    function onLoadSuccess() {
-        imgLoaded = true;
-        statusDiv.style.display = 'none'; 
-        const minSide = Math.min(userImg.width, userImg.height);
-        state.zoom = PHOTO_W / minSide; 
-        state.offX = 0;
-        state.offY = 0;
-        draw();
+    // Função Mágica: Reduz a imagem ANTES de usar
+    function resizeImage(file, maxDimension, callback) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const img = new Image();
+            img.onload = function() {
+                // Calcula nova dimensão mantendo proporção
+                let width = img.width;
+                let height = img.height;
+                
+                if (width > height) {
+                    if (width > maxDimension) {
+                        height *= maxDimension / width;
+                        width = maxDimension;
+                    }
+                } else {
+                    if (height > maxDimension) {
+                        width *= maxDimension / height;
+                        height = maxDimension;
+                    }
+                }
+                
+                // Cria canvas temporário na memória
+                const tempCanvas = document.createElement('canvas');
+                tempCanvas.width = width;
+                tempCanvas.height = height;
+                const tempCtx = tempCanvas.getContext('2d');
+                
+                // Desenha reduzido
+                tempCtx.drawImage(img, 0, 0, width, height);
+                
+                // Exporta como JPG leve (0.8 qualidade)
+                // Isso evita o estouro de memória
+                try {
+                    const dataUrl = tempCanvas.toDataURL('image/jpeg', 0.8);
+                    callback(dataUrl);
+                } catch (err) {
+                    console.error(err);
+                    callback(null);
+                }
+            };
+            img.onerror = function() { callback(null); };
+            img.src = e.target.result;
+        };
+        reader.onerror = function() { callback(null); };
+        reader.readAsDataURL(file);
     }
 
+    // --- 3. INPUTS DE TEXTO ---
     document.querySelectorAll('input').forEach(input => {
         input.addEventListener('input', draw);
     });
 
+    // --- 4. CONTROLES ---
     function move(dx, dy) {
         state.offX += dx / state.zoom;
         state.offY += dy / state.zoom;
@@ -198,39 +233,68 @@
         }
     }
 
+    // --- 5. FUNÇÃO DE DESENHO PRINCIPAL ---
     function draw() {
-        // Limpa usando as dimensões REAIS (dividindo pela escala pois o contexto está escalado)
-        ctx.clearRect(0, 0, canvas.width / globalScale, canvas.height / globalScale);
-        
-        // Fundo Branco
-        ctx.fillStyle = "white";
-        ctx.fillRect(0, 0, canvas.width / globalScale, canvas.height / globalScale);
+        // Se a moldura não carregou, não faz nada
+        if (!molduraLoaded) return;
 
-        if (imgLoaded) {
+        // Limpa tudo
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Fundo Branco (para evitar transparência)
+        ctx.fillStyle = "white";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // A. Desenha Foto do Usuário (se existir)
+        if (imgLoaded && userImg.complete) {
             ctx.save();
             ctx.beginPath();
+            // Define a área de recorte (buraco da moldura)
             ctx.rect(PHOTO_X, PHOTO_Y, PHOTO_W, PHOTO_H);
             ctx.clip(); 
+            
             const cx = PHOTO_X + PHOTO_W / 2;
             const cy = PHOTO_Y + PHOTO_H / 2;
+            
+            // Aplica transformações (Zoom/Pan)
             ctx.translate(cx, cy);
             ctx.scale(state.zoom, state.zoom);
             ctx.translate(-state.offX, -state.offY);
+            
+            // Desenha imagem centralizada
             ctx.drawImage(userImg, -userImg.width / 2, -userImg.height / 2);
             ctx.restore();
         }
 
+        // B. Desenha Moldura por cima de tudo
         ctx.drawImage(molduraImg, 0, 0);
+
+        // C. Desenha Textos
         drawTexts();
     }
 
     function drawTexts() {
         const texts = {
-            situacao: { val: document.getElementById('sit').value, x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 },
-            natureza: { val: document.getElementById('nat').value, x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 },
-            nome: { val: document.getElementById('nome').value, x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 },
-            rg: { val: document.getElementById('rg').value, x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 },
-            outros: { val: document.getElementById('out').value, x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 }
+            situacao: { 
+                val: document.getElementById('sit').value, 
+                x: 135, y: 608, w: 80, h: 961, rot: 270, color: 'black', maxSize: 60 
+            },
+            natureza: { 
+                val: document.getElementById('nat').value, 
+                x: 328, y: 1569, w: 1000, h: 200, rot: 0, color: 'red', maxSize: 130 
+            },
+            nome: { 
+                val: document.getElementById('nome').value, 
+                x: 82, y: 1853, w: 1500, h: 80, rot: 0, color: 'black', maxSize: 75 
+            },
+            rg: { 
+                val: document.getElementById('rg').value, 
+                x: 82, y: 1950, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
+            },
+            outros: { 
+                val: document.getElementById('out').value, 
+                x: 82, y: 2017, w: 1500, h: 50, rot: 0, color: 'black', maxSize: 45 
+            }
         };
 
         ctx.textBaseline = "middle";
@@ -252,6 +316,7 @@
 
             let maxWidth = (t.rot === 90 || t.rot === 270) ? t.h : t.w;
 
+            // Natureza (2 Linhas)
             if (key === 'natureza') {
                 let minFontSize = 65;
                 let fitOneLine = false;
@@ -259,10 +324,7 @@
 
                 do {
                     ctx.font = `${isBold} ${fontSize}px Arial`;
-                    if (ctx.measureText(textVal).width <= maxWidth) {
-                        fitOneLine = true;
-                        break;
-                    }
+                    if (ctx.measureText(textVal).width <= maxWidth) { fitOneLine = true; break; }
                     fontSize -= 2;
                 } while (fontSize >= minFontSize);
 
@@ -300,10 +362,8 @@
         let i = 0;
         while (i < words.length) {
             let testLine = line1 + words[i] + " ";
-            if (ctx.measureText(testLine).width < maxWidth) {
-                line1 += words[i] + " ";
-                i++;
-            } else { break; }
+            if (ctx.measureText(testLine).width < maxWidth) { line1 += words[i] + " "; i++; } 
+            else { break; }
         }
         line2 = words.slice(i).join(" ");
         let overflow = ctx.measureText(line2).width > maxWidth;
@@ -313,7 +373,7 @@
     async function shareImage() {
         if (!imgLoaded) { alert("Carregue uma foto primeiro."); return; }
         if (!navigator.share || !navigator.canShare) {
-            alert("Compartilhamento direto não suportado. Use o botão Salvar.");
+            alert("Compartilhamento não suportado. Use 'Salvar'.");
             downloadImage();
             return;
         }
@@ -323,11 +383,7 @@
                 const name = document.getElementById('nome').value.split(' ')[0] || 'PC';
                 const file = new File([blob], `Placa_${name}.png`, { type: "image/png" });
                 if (navigator.canShare({ files: [file] })) {
-                    await navigator.share({
-                        files: [file],
-                        title: 'SIV-PC',
-                        text: `Placa de: ${name}`
-                    });
+                    await navigator.share({ files: [file], title: 'SIV-PC', text: `Placa: ${name}` });
                 }
             }, 'image/png');
         } catch (err) { console.error(err); }
